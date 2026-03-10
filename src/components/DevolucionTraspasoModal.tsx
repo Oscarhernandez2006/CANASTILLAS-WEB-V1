@@ -1,19 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'
-import type { Rental, Canastilla, SignatureData } from '@/types'
-import { formatCurrency, formatDate } from '@/utils/helpers'
-import { useRentalReturns } from '@/hooks/useRentalReturns'
-import { useAuthStore } from '@/store/authStore'
-import { openFacturaDevolucionPDF, getFacturaDevolucionPDFBlob } from '@/utils/facturaDevolucionGenerator'
-import { uploadSignedPDF } from '@/services/storageService'
+import type { Transfer, Canastilla, SignatureData } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import { formatDate } from '@/utils/helpers'
+import { openRemisionTraspasoPDF, getRemisionTraspasoPDFBlob } from '@/utils/remisionTraspasoGenerator'
+import { uploadSignedPDF } from '@/services/storageService'
 
-interface ProcesarRetornoModalProps {
+interface DevolucionTraspasoModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
-  rental: Rental | null
+  transfer: Transfer | null
 }
 
 interface LoteGroup {
@@ -24,12 +23,12 @@ interface LoteGroup {
   cantidadDevolver: number
   canastillas: Array<{
     id: string
-    rental_item_id: string
+    transfer_item_id: string
     canastilla: Canastilla
   }>
 }
 
-export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: ProcesarRetornoModalProps) {
+export function DevolucionTraspasoModal({ isOpen, onClose, onSuccess, transfer }: DevolucionTraspasoModalProps) {
   const [loading, setLoading] = useState(false)
   const [loadingItems, setLoadingItems] = useState(false)
   const [error, setError] = useState('')
@@ -38,17 +37,9 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
   const [showFirmaModal, setShowFirmaModal] = useState(false)
 
   const { user } = useAuthStore()
-  const { createReturn, calculateReturnAmount, calculateDaysSinceStart } = useRentalReturns()
 
-  // Inicializar los lotes cuando se abre el modal
-  useEffect(() => {
-    if (rental && isOpen) {
-      loadRentalItems()
-    }
-  }, [rental, isOpen])
-
-  const loadRentalItems = async () => {
-    if (!rental) return
+  const loadTransferItems = useCallback(async () => {
+    if (!transfer) return
 
     setLoadingItems(true)
     setError('')
@@ -56,35 +47,41 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
     try {
       // Obtener IDs de canastillas ya devueltas
       const returnedCanastillaIds = new Set<string>()
-      if ((rental as any).rental_returns) {
-        for (const ret of (rental as any).rental_returns) {
-          if (ret.rental_return_items) {
-            for (const item of ret.rental_return_items) {
-              if (item.canastilla?.id) {
-                returnedCanastillaIds.add(item.canastilla.id)
-              }
+      const { data: existingReturns } = await supabase
+        .from('transfer_returns')
+        .select(`
+          id,
+          transfer_return_items(canastilla_id)
+        `)
+        .eq('transfer_id', transfer.id)
+
+      if (existingReturns) {
+        for (const ret of existingReturns) {
+          if (ret.transfer_return_items) {
+            for (const item of ret.transfer_return_items as Array<{ canastilla_id: string }>) {
+              returnedCanastillaIds.add(item.canastilla_id)
             }
           }
         }
       }
 
-      // Cargar TODOS los rental_items con paginación
+      // Cargar TODOS los transfer_items con paginación
       const PAGE_SIZE = 1000
-      let allRentalItems: any[] = []
+      let allTransferItems: Array<{ id: string; canastilla: Canastilla }> = []
       let hasMore = true
       let offset = 0
 
       while (hasMore) {
         const { data: itemsBatch, error: itemsError } = await supabase
-          .from('rental_items')
+          .from('transfer_items')
           .select('id, canastilla:canastillas(*)')
-          .eq('rental_id', rental.id)
+          .eq('transfer_id', transfer.id)
           .range(offset, offset + PAGE_SIZE - 1)
 
         if (itemsError) throw itemsError
 
         if (itemsBatch && itemsBatch.length > 0) {
-          allRentalItems = [...allRentalItems, ...itemsBatch]
+          allTransferItems = [...allTransferItems, ...itemsBatch]
           offset += PAGE_SIZE
           hasMore = itemsBatch.length === PAGE_SIZE
         } else {
@@ -93,11 +90,11 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
       }
 
       // Filtrar canastillas pendientes y agrupar por tamaño+color
-      const pendingItems = allRentalItems
+      const pendingItems = allTransferItems
         .filter(item => item.canastilla && !returnedCanastillaIds.has(item.canastilla.id))
         .map(item => ({
           id: item.canastilla.id,
-          rental_item_id: item.id || '',
+          transfer_item_id: item.id,
           canastilla: item.canastilla
         }))
 
@@ -113,7 +110,7 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
             size: item.canastilla.size,
             color: item.canastilla.color,
             totalDisponible: 0,
-            cantidadDevolver: 0, // Por defecto 0, el usuario elige
+            cantidadDevolver: 0,
             canastillas: []
           }
         }
@@ -124,31 +121,26 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
 
       setLotes(Object.values(grouped))
       setNotes('')
-    } catch (err: any) {
-      console.error('Error loading rental items:', err)
-      setError('Error al cargar las canastillas: ' + err.message)
+    } catch (err: unknown) {
+      console.error('Error loading transfer items:', err)
+      setError('Error al cargar las canastillas: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setLoadingItems(false)
     }
-  }
+  }, [transfer])
 
-  if (!rental) return null
+  useEffect(() => {
+    if (transfer && isOpen) {
+      loadTransferItems()
+    }
+  }, [transfer, isOpen, loadTransferItems])
 
-  const actualDays = calculateDaysSinceStart(rental.start_date)
+  if (!transfer) return null
 
-  // Calcular totales
   const totalCanastillasDevolver = lotes.reduce((sum, lote) => sum + lote.cantidadDevolver, 0)
   const totalCanastillasPendientes = lotes.reduce((sum, lote) => sum + lote.totalDisponible, 0)
   const pendingAfterReturn = totalCanastillasPendientes - totalCanastillasDevolver
   const isPartialReturn = pendingAfterReturn > 0 && totalCanastillasDevolver > 0
-
-  // Calcular monto total
-  const totalAmount = calculateReturnAmount(
-    totalCanastillasDevolver,
-    rental.daily_rate,
-    actualDays,
-    rental.rental_type
-  )
 
   const handleCantidadChange = (key: string, cantidad: number) => {
     setLotes(prev =>
@@ -198,89 +190,144 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
 
     try {
       // Seleccionar las canastillas a devolver de cada lote
-      const canastillasADevolver: Canastilla[] = []
       const canastillaIds: string[] = []
-      const rentalItemIds: string[] = []
+      const transferItemIds: string[] = []
 
       for (const lote of lotes) {
         if (lote.cantidadDevolver > 0) {
           const seleccionadas = lote.canastillas.slice(0, lote.cantidadDevolver)
           for (const item of seleccionadas) {
-            canastillasADevolver.push(item.canastilla)
             canastillaIds.push(item.id)
-            rentalItemIds.push(item.rental_item_id)
+            transferItemIds.push(item.transfer_item_id)
           }
         }
       }
 
-      const result = await createReturn({
-        rentalId: rental.id,
-        canastillaIds,
-        rentalItemIds,
-        daysCharged: actualDays,
-        amount: totalAmount,
-        notes: notes || undefined,
-        processedBy: user?.id || ''
-      })
+      // 1. Crear el registro de devolución de traspaso
+      const { data: transferReturn, error: returnError } = await supabase
+        .from('transfer_returns')
+        .insert({
+          transfer_id: transfer.id,
+          return_date: new Date().toISOString(),
+          notes: notes || null,
+          processed_by: user?.id || '',
+          firma_entrega_base64: signatureData.firma_entrega_base64,
+          firma_entrega_nombre: signatureData.firma_entrega_nombre,
+          firma_entrega_cedula: signatureData.firma_entrega_cedula,
+          firma_recibe_base64: signatureData.firma_recibe_base64,
+          firma_recibe_nombre: signatureData.firma_recibe_nombre,
+          firma_recibe_cedula: signatureData.firma_recibe_cedula,
+          firma_tercero_base64: signatureData.firma_tercero_base64 || null,
+          firma_tercero_nombre: signatureData.firma_tercero_nombre || null,
+          firma_tercero_cedula: signatureData.firma_tercero_cedula || null,
+        })
+        .select()
+        .single()
 
-      if (!result.success) {
-        throw new Error(result.error)
+      if (returnError) throw returnError
+
+      // 2. Crear los items de la devolución (con batching)
+      const returnItems = canastillaIds.map((canastillaId, index) => ({
+        transfer_return_id: transferReturn.id,
+        canastilla_id: canastillaId,
+        transfer_item_id: transferItemIds[index] || null
+      }))
+
+      const BATCH_SIZE = 500
+      for (let i = 0; i < returnItems.length; i += BATCH_SIZE) {
+        const batch = returnItems.slice(i, i + BATCH_SIZE)
+        const { error: itemsError } = await supabase
+          .from('transfer_return_items')
+          .insert(batch)
+        if (itemsError) throw itemsError
       }
 
-      // Guardar firmas en el rental_return
-      const returnId = result.rentalReturn?.id
-      if (returnId) {
-        await supabase
-          .from('rental_returns')
+      // 3. Devolver canastillas al remitente original (from_user_id) con estado DISPONIBLE
+      for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
+        const batch = canastillaIds.slice(i, i + BATCH_SIZE)
+        const { error: canastillasError } = await supabase
+          .from('canastillas')
           .update({
-            firma_entrega_base64: signatureData.firma_entrega_base64,
-            firma_entrega_nombre: signatureData.firma_entrega_nombre,
-            firma_entrega_cedula: signatureData.firma_entrega_cedula,
-            firma_recibe_base64: signatureData.firma_recibe_base64,
-            firma_recibe_nombre: signatureData.firma_recibe_nombre,
-            firma_recibe_cedula: signatureData.firma_recibe_cedula,
+            current_owner_id: transfer.from_user_id,
+            status: 'DISPONIBLE',
           })
-          .eq('id', returnId)
+          .in('id', batch)
+        if (canastillasError) throw canastillasError
       }
 
-      const facturaData = {
-        rental,
-        returnData: {
-          invoiceNumber: result.invoiceNumber!,
-          returnDate: new Date().toISOString(),
-          daysCharged: actualDays,
-          amount: totalAmount,
-          notes,
-          canastillas: canastillasADevolver
-        },
-        isPartial: isPartialReturn,
-        pendingCount: pendingAfterReturn
-      }
+      // 4. Actualizar contadores del traspaso
+      const currentReturned = transfer.returned_items_count || 0
+      const currentPending = transfer.pending_items_count ?? (transfer.items_count || 0)
+      const newReturnedCount = currentReturned + canastillaIds.length
+      const newPendingCount = Math.max(0, currentPending - canastillaIds.length)
 
-      // Subir PDF firmado a storage
+      await supabase
+        .from('transfers')
+        .update({
+          returned_items_count: newReturnedCount,
+          pending_items_count: newPendingCount,
+        })
+        .eq('id', transfer.id)
+
+      // 5. Subir PDF firmado a storage
       try {
-        const pdfBlob = await getFacturaDevolucionPDFBlob(facturaData, signatureData)
-        const pdfUrl = await uploadSignedPDF(pdfBlob, 'returns', `Factura_${result.invoiceNumber}.pdf`)
-        if (pdfUrl && returnId) {
-          await supabase.from('rental_returns').update({ signed_pdf_url: pdfUrl }).eq('id', returnId)
+        // Obtener transfer completo para PDF
+        const { data: transferBase } = await supabase
+          .from('transfers')
+          .select(`
+            *,
+            from_user:users!transfers_from_user_id_fkey(*),
+            to_user:users!transfers_to_user_id_fkey(*)
+          `)
+          .eq('id', transfer.id)
+          .single()
+
+        if (transferBase) {
+          // Obtener todos los items del transfer
+          let allItems: Array<{ id: string; canastilla: Canastilla }> = []
+          let hasMoreItems = true
+          let offsetItems = 0
+
+          while (hasMoreItems) {
+            const { data: itemsBatch } = await supabase
+              .from('transfer_items')
+              .select('*, canastilla:canastillas(*)')
+              .eq('transfer_id', transfer.id)
+              .range(offsetItems, offsetItems + 1000 - 1)
+
+            if (itemsBatch && itemsBatch.length > 0) {
+              allItems = [...allItems, ...itemsBatch]
+              offsetItems += 1000
+              hasMoreItems = itemsBatch.length === 1000
+            } else {
+              hasMoreItems = false
+            }
+          }
+
+          const fullTransfer = { ...transferBase, transfer_items: allItems } as unknown as Transfer
+
+          const pdfBlob = await getRemisionTraspasoPDFBlob(fullTransfer, signatureData)
+          const pdfUrl = await uploadSignedPDF(pdfBlob, 'transfer-returns', `Devolucion_${transfer.remision_number}_${Date.now()}.pdf`)
+          if (pdfUrl) {
+            await supabase.from('transfer_returns').update({ signed_pdf_url: pdfUrl }).eq('id', transferReturn.id)
+          }
+
+          await openRemisionTraspasoPDF(fullTransfer, signatureData)
         }
       } catch (pdfErr) {
-        console.error('Error al subir PDF firmado:', pdfErr)
+        console.error('Error al generar PDF de devolución:', pdfErr)
       }
 
-      // Abrir factura con firmas
-      await openFacturaDevolucionPDF(facturaData, signatureData)
-
       const message = isPartialReturn
-        ? `Devolución parcial procesada\n\nFactura: ${result.invoiceNumber}\nCanastillas devueltas: ${totalCanastillasDevolver}\nPendientes: ${pendingAfterReturn}\nTotal: ${formatCurrency(totalAmount)}`
-        : `Retorno completo procesado\n\nFactura: ${result.invoiceNumber}\nTotal: ${formatCurrency(totalAmount)}`
+        ? `Devolución parcial procesada\n\nCanastillas devueltas: ${canastillaIds.length}\nPendientes: ${pendingAfterReturn}`
+        : `Devolución completa procesada\n\nCanastillas devueltas: ${canastillaIds.length}`
 
       alert(message)
       onSuccess()
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error processing return:', err)
-      setError(err.message || 'Error al procesar el retorno')
+      setError(err instanceof Error ? err.message : 'Error al procesar la devolución')
     } finally {
       setLoading(false)
     }
@@ -291,23 +338,21 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        {/* Overlay */}
         <div
           className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
           onClick={onClose}
         ></div>
 
-        {/* Modal */}
         <div
           className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-2xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
+          <div className="bg-orange-600 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base sm:text-lg font-semibold text-white">
-                Procesar Retorno
+                Devolución de Traspaso Externo
               </h3>
               <button
                 type="button"
@@ -329,33 +374,47 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
               </div>
             )}
 
-            {/* Información del cliente y alquiler */}
+            {/* Información del destinatario externo y traspaso */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
               <div>
-                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Cliente</h4>
-                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{rental.sale_point?.name}</p>
-                  <p className="text-xs sm:text-sm text-gray-600 truncate">{rental.sale_point?.contact_name}</p>
-                  <p className="text-xs sm:text-sm text-gray-500">{rental.sale_point?.contact_phone}</p>
+                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Destinatario Externo</h4>
+                <div className="p-3 sm:p-4 bg-orange-50 rounded-lg">
+                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                    {transfer.external_recipient_name || transfer.to_user?.first_name}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-600 truncate">
+                    Cédula: {transfer.external_recipient_cedula || '-'}
+                  </p>
+                  {transfer.external_recipient_empresa && (
+                    <p className="text-xs sm:text-sm text-gray-500">{transfer.external_recipient_empresa}</p>
+                  )}
+                  {transfer.external_recipient_phone && (
+                    <p className="text-xs sm:text-sm text-gray-500">Tel: {transfer.external_recipient_phone}</p>
+                  )}
                 </div>
               </div>
               <div>
-                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Detalles</h4>
+                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Detalles del Traspaso</h4>
                 <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                      rental.rental_type === 'INTERNO'
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'bg-pink-100 text-pink-800'
-                    }`}>
-                      {rental.rental_type}
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-800">
+                      EXTERNO
                     </span>
                     <span className="text-xs text-gray-500">
-                      {rental.remision_number || 'N/A'}
+                      {transfer.remision_number || 'N/A'}
                     </span>
                   </div>
-                  <p className="text-xs sm:text-sm text-gray-600">Inicio: {formatDate(rental.start_date)}</p>
-                  <p className="text-xs sm:text-sm font-semibold text-gray-900">Días: {actualDays}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    Fecha: {formatDate(transfer.requested_at)}
+                  </p>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-900">
+                    Total: {transfer.items_count || 0} canastillas
+                  </p>
+                  {(transfer.returned_items_count || 0) > 0 && (
+                    <p className="text-xs sm:text-sm text-green-600">
+                      Devueltas: {transfer.returned_items_count}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -371,7 +430,7 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                     <button
                       type="button"
                       onClick={handleDevolverTodoGlobal}
-                      className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+                      className="text-xs text-orange-600 hover:text-orange-800 font-medium"
                     >
                       Devolver todas
                     </button>
@@ -390,16 +449,20 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
               {loadingItems ? (
                 <div className="flex items-center justify-center h-32 border border-gray-200 rounded-lg">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
                     <p className="text-sm text-gray-500 mt-2">Cargando canastillas...</p>
                   </div>
+                </div>
+              ) : lotes.length === 0 ? (
+                <div className="flex items-center justify-center h-32 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-500">No hay canastillas pendientes de devolución</p>
                 </div>
               ) : (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 {/* Header de la tabla */}
                 <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-100 text-xs font-medium text-gray-600 uppercase">
                   <div className="col-span-5">Lote (Tamaño - Color)</div>
-                  <div className="col-span-2 text-center">Disponibles</div>
+                  <div className="col-span-2 text-center">Pendientes</div>
                   <div className="col-span-3 text-center">Devolver</div>
                   <div className="col-span-2 text-center">Acción</div>
                 </div>
@@ -426,14 +489,14 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                           value={lote.cantidadDevolver || ''}
                           onChange={(e) => handleCantidadChange(lote.key, e.target.value === '' ? 0 : parseInt(e.target.value))}
                           placeholder="0"
-                          className="w-full px-3 py-1.5 text-center border border-gray-300 rounded-lg text-sm focus:ring-primary-500 focus:border-primary-500"
+                          className="w-full px-3 py-1.5 text-center border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
                         />
                       </div>
                       <div className="col-span-2 text-center">
                         <button
                           type="button"
                           onClick={() => handleDevolverTodo(lote.key)}
-                          className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+                          className="text-xs text-orange-600 hover:text-orange-800 font-medium"
                         >
                           Todo
                         </button>
@@ -450,7 +513,7 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                   <div className="col-span-2 text-center text-sm font-semibold text-gray-700">
                     {totalCanastillasPendientes}
                   </div>
-                  <div className="col-span-3 text-center text-sm font-bold text-primary-600">
+                  <div className="col-span-3 text-center text-sm font-bold text-orange-600">
                     {totalCanastillasDevolver}
                   </div>
                   <div className="col-span-2"></div>
@@ -463,7 +526,7 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                 <div className="mt-2 text-sm">
                   {isPartialReturn ? (
                     <span className="text-orange-600 font-medium">
-                      Quedarán {pendingAfterReturn} canastillas pendientes
+                      Quedarán {pendingAfterReturn} canastillas pendientes de devolución
                     </span>
                   ) : (
                     <span className="text-green-600 font-medium">
@@ -483,49 +546,10 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
                 placeholder="Observaciones sobre la devolución..."
               />
             </div>
-
-            {/* Resumen de facturación */}
-            {totalCanastillasDevolver > 0 && (
-              <div className="border-t border-gray-200 pt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Resumen de Facturación</h4>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">
-                      {rental.rental_type === 'INTERNO' ? 'Tarifa fija:' : 'Tarifa diaria:'}
-                    </span>
-                    <span className="font-medium text-gray-900">{formatCurrency(rental.daily_rate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Canastillas a facturar:</span>
-                    <span className="font-medium text-gray-900">{totalCanastillasDevolver}</span>
-                  </div>
-                  {rental.rental_type === 'EXTERNO' && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Días transcurridos:</span>
-                      <span className="font-medium text-gray-900">{actualDays}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-xs text-gray-500 pt-1">
-                    <span>Fórmula:</span>
-                    <span>
-                      {rental.rental_type === 'INTERNO'
-                        ? `${totalCanastillasDevolver} × ${formatCurrency(rental.daily_rate)}`
-                        : `${totalCanastillasDevolver} × ${formatCurrency(rental.daily_rate)} × ${actualDays} días`
-                      }
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
-                    <span className="text-gray-900">Total a cobrar:</span>
-                    <span className="text-primary-600">{formatCurrency(totalAmount)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Alertas */}
             {isPartialReturn && (
@@ -537,8 +561,7 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
                   <div>
                     <p className="text-sm font-medium text-orange-800">Devolución Parcial</p>
                     <p className="text-sm text-orange-700 mt-1">
-                      El alquiler permanecerá <strong>ACTIVO</strong> con {pendingAfterReturn} canastillas pendientes.
-                      Los días se seguirán contando hasta que se devuelvan todas.
+                      Quedarán <strong>{pendingAfterReturn}</strong> canastillas pendientes con el destinatario externo.
                     </p>
                   </div>
                 </div>
@@ -548,13 +571,10 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
             {totalCanastillasDevolver === totalCanastillasPendientes && totalCanastillasDevolver > 0 && (
               <div className="p-4 bg-green-50 rounded-lg">
                 <p className="text-sm text-green-800">
-                  <strong>✓</strong> Devolución completa - El alquiler se marcará como <strong>RETORNADO</strong>
+                  <strong>✓</strong> Devolución completa - Todas las canastillas serán devueltas
                 </p>
                 <p className="text-sm text-green-800 mt-1">
                   <strong>✓</strong> Las canastillas volverán a estado <strong>DISPONIBLE</strong>
-                </p>
-                <p className="text-sm text-green-800 mt-1">
-                  <strong>✓</strong> Se generará la factura final
                 </p>
               </div>
             )}
@@ -575,30 +595,31 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
               onClick={handlePreProcessReturn}
               loading={loading}
               disabled={loading || loadingItems || totalCanastillasDevolver === 0}
-              className="w-full sm:w-auto text-sm order-1 sm:order-2"
+              className="w-full sm:w-auto text-sm order-1 sm:order-2 !bg-orange-600 hover:!bg-orange-700"
             >
               {loading
                 ? 'Procesando...'
                 : isPartialReturn
-                  ? `Devolución (${totalCanastillasDevolver})`
-                  : `Confirmar (${totalCanastillasDevolver})`
+                  ? `Devolución Parcial (${totalCanastillasDevolver})`
+                  : `Devolver Todo (${totalCanastillasDevolver})`
               }
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Modal de Firma Digital - Ambas partes */}
+      {/* Modal de Firma Digital */}
       <FirmaDigitalModal
         isOpen={showFirmaModal}
         onClose={() => setShowFirmaModal(false)}
         onConfirm={handleFirmaConfirm}
         loading={loading}
         title="Firmas de Devolución"
-        entregaLabel="CLIENTE"
-        recibeLabel="EMPRESA"
+        entregaLabel="ENTREGA (Externo)"
+        recibeLabel="RECIBE (Empresa)"
         mode="both"
         confirmButtonText="Firmar y Procesar Devolución"
+        allowTercero
       />
     </div>
   )

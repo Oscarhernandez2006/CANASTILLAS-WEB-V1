@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
+import { FirmaDigitalModal } from './FirmaDigitalModal'
+import { SearchableUserSelect } from './SearchableUserSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { openRemisionTraspasoPDF } from '@/utils/remisionTraspasoGenerator'
-import type { User, Canastilla, Transfer } from '@/types'
+import type { User, Canastilla, Transfer, SignatureData } from '@/types'
 
 interface LoteGroup {
   key: string
   size: string
   color: string
+  shape: string
+  tipo_propiedad: string
   totalDisponible: number
   cantidadTraspasar: number
   canastillas: Canastilla[]
@@ -30,15 +34,24 @@ export function SolicitarTraspasoModal({
   const [error, setError] = useState('')
   const [users, setUsers] = useState<User[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
+  const [showFirmaModal, setShowFirmaModal] = useState(false)
   const { user: currentUser } = useAuthStore()
 
   const [lotes, setLotes] = useState<LoteGroup[]>([])
   const [canastillasRetenidas, setCanastillasRetenidas] = useState(0)
+  const [tipoTraspaso, setTipoTraspaso] = useState<'normal' | 'externo'>('normal')
 
   const [formData, setFormData] = useState({
     to_user_id: '',
     reason: '',
     notes: '',
+  })
+
+  const [externalData, setExternalData] = useState({
+    nombre: '',
+    cedula: '',
+    telefono: '',
+    empresa: '',
   })
 
   useEffect(() => {
@@ -117,17 +130,19 @@ export function SolicitarTraspasoModal({
       const cantidadRetenidas = disponibles.length - canastillasLibres.length
       setCanastillasRetenidas(cantidadRetenidas)
 
-      // 4. Agrupar por size + color
+      // 4. Agrupar por size + color + shape + tipo_propiedad
       const grouped: Record<string, LoteGroup> = {}
 
       for (const canastilla of canastillasLibres) {
-        const key = `${canastilla.size}-${canastilla.color}`
+        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.tipo_propiedad || 'PROPIA'}`
 
         if (!grouped[key]) {
           grouped[key] = {
             key,
             size: canastilla.size,
             color: canastilla.color,
+            shape: canastilla.shape || '',
+            tipo_propiedad: canastilla.tipo_propiedad || 'PROPIA',
             totalDisponible: 0,
             cantidadTraspasar: 0,
             canastillas: []
@@ -206,15 +221,29 @@ export function SolicitarTraspasoModal({
   const totalCanastillasTraspasar = lotes.reduce((sum, lote) => sum + lote.cantidadTraspasar, 0)
   const totalCanastillasDisponibles = lotes.reduce((sum, lote) => sum + lote.totalDisponible, 0)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
+
+    if (!currentUser) { setError('Usuario no autenticado'); return }
+    if (tipoTraspaso === 'normal' && !formData.to_user_id) { setError('Selecciona un usuario destino'); return }
+    if (tipoTraspaso === 'externo') {
+      if (!externalData.nombre.trim()) { setError('Ingresa el nombre del destinatario externo'); return }
+      if (!externalData.cedula.trim()) { setError('Ingresa la cédula del destinatario externo'); return }
+    }
+    if (totalCanastillasTraspasar === 0) { setError('Selecciona al menos una canastilla'); return }
+
+    // Validación OK → abrir modal de firma
+    setShowFirmaModal(true)
+  }
+
+  const handleFirmaConfirm = async (signatureData: SignatureData) => {
+    setShowFirmaModal(false)
     setError('')
     setLoading(true)
 
     try {
       if (!currentUser) throw new Error('Usuario no autenticado')
-      if (!formData.to_user_id) throw new Error('Selecciona un usuario destino')
-      if (totalCanastillasTraspasar === 0) throw new Error('Selecciona al menos una canastilla')
 
       // Recopilar los IDs de las canastillas seleccionadas de cada lote
       const canastillaIds: string[] = []
@@ -226,9 +255,44 @@ export function SolicitarTraspasoModal({
       }
 
       const now = new Date().toISOString()
+      let targetUserId = formData.to_user_id
+      const isExternalTransfer = tipoTraspaso === 'externo'
+
+      // Para traspasos externos, crear usuario cliente inactivo
+      if (isExternalTransfer) {
+        // Buscar si ya existe un usuario con esa cédula
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('phone', externalData.cedula)
+          .eq('role', 'client')
+          .maybeSingle()
+
+        if (existingUser) {
+          targetUserId = existingUser.id
+        } else {
+          // Crear usuario externo inactivo
+          const { data: newUser, error: userError } = await supabase
+            .from('users')
+            .insert({
+              email: `externo_${externalData.cedula}@canastilla.local`,
+              first_name: externalData.nombre,
+              last_name: externalData.empresa || 'Externo',
+              phone: externalData.cedula,
+              role: 'client',
+              is_active: false,
+              department: externalData.empresa || null,
+            })
+            .select()
+            .single()
+
+          if (userError) throw new Error('Error al crear destinatario externo: ' + userError.message)
+          targetUserId = newUser.id
+        }
+      }
 
       // Verificar si el usuario destino es personal de lavado
-      const selectedUser = users.find(u => u.id === formData.to_user_id)
+      const selectedUser = !isExternalTransfer ? users.find(u => u.id === targetUserId) : null
       const isWashingTransfer = selectedUser?.role === 'washing_staff'
 
       // 1. Generar número de remisión (RL para lavado, RT para traspaso normal)
@@ -242,18 +306,33 @@ export function SolicitarTraspasoModal({
       if (remisionError) throw remisionError
       const remisionNumber = remisionData as string
 
-      // 2. Crear el traspaso con número de remisión
+      // 2. Crear el traspaso con número de remisión + firma del remitente
       const { data: transfer, error: transferError } = await supabase
         .from('transfers')
         .insert([{
           from_user_id: currentUser.id,
-          to_user_id: formData.to_user_id,
-          status: 'PENDIENTE',
-          reason: isWashingTransfer ? 'Envío a lavado' : formData.reason,
+          to_user_id: targetUserId,
+          status: isExternalTransfer ? 'ACEPTADO' : 'PENDIENTE',
+          reason: isWashingTransfer ? 'Envío a lavado' : (isExternalTransfer ? `Traspaso externo a ${externalData.nombre}` : formData.reason),
           notes: formData.notes,
           remision_number: remisionNumber,
           remision_generated_at: now,
           is_washing_transfer: isWashingTransfer,
+          is_external_transfer: isExternalTransfer,
+          external_recipient_name: isExternalTransfer ? externalData.nombre : null,
+          external_recipient_cedula: isExternalTransfer ? externalData.cedula : null,
+          external_recipient_phone: isExternalTransfer ? externalData.telefono : null,
+          external_recipient_empresa: isExternalTransfer ? externalData.empresa : null,
+          responded_at: isExternalTransfer ? now : null,
+          firma_entrega_base64: signatureData.firma_entrega_base64,
+          firma_entrega_nombre: signatureData.firma_entrega_nombre,
+          firma_entrega_cedula: signatureData.firma_entrega_cedula,
+          firma_recibe_base64: isExternalTransfer ? signatureData.firma_recibe_base64 : null,
+          firma_recibe_nombre: isExternalTransfer ? signatureData.firma_recibe_nombre : null,
+          firma_recibe_cedula: isExternalTransfer ? signatureData.firma_recibe_cedula : null,
+          firma_tercero_base64: signatureData.firma_tercero_base64 || null,
+          firma_tercero_nombre: signatureData.firma_tercero_nombre || null,
+          firma_tercero_cedula: signatureData.firma_tercero_cedula || null,
         }])
         .select()
         .single()
@@ -276,23 +355,48 @@ export function SolicitarTraspasoModal({
         if (itemsError) throw itemsError
       }
 
-      // 4. Crear notificación
-      const notifTitle = isWashingTransfer
-        ? 'Canastillas enviadas a lavado'
-        : 'Nueva solicitud de traspaso'
-      const notifMessage = isWashingTransfer
-        ? `${currentUser.first_name} ${currentUser.last_name} te ha enviado ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''} para lavado.`
-        : `${currentUser.first_name} ${currentUser.last_name} te ha enviado una solicitud de traspaso de ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''}.`
+      // 4. Crear notificación (solo para traspasos normales/lavado, no externos)
+      if (!isExternalTransfer) {
+        const notifTitle = isWashingTransfer
+          ? 'Canastillas enviadas a lavado'
+          : 'Nueva solicitud de traspaso'
+        const notifMessage = isWashingTransfer
+          ? `${currentUser.first_name} ${currentUser.last_name} te ha enviado ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''} para lavado.`
+          : `${currentUser.first_name} ${currentUser.last_name} te ha enviado una solicitud de traspaso de ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''}.`
 
-      await supabase
-        .from('notifications')
-        .insert([{
-          user_id: formData.to_user_id,
-          type: isWashingTransfer ? 'LAVADO_RECIBIDO' : 'TRASPASO_RECIBIDO',
-          title: notifTitle,
-          message: notifMessage,
-          related_id: transfer.id
-        }])
+        await supabase
+          .from('notifications')
+          .insert([{
+            user_id: targetUserId,
+            type: isWashingTransfer ? 'LAVADO_RECIBIDO' : 'TRASPASO_RECIBIDO',
+            title: notifTitle,
+            message: notifMessage,
+            related_id: transfer.id
+          }])
+      }
+
+      // Para traspasos externos, mover canastillas inmediatamente (ya que se auto-aceptan)
+      if (isExternalTransfer) {
+        const BATCH_UPDATE = 500
+        for (let i = 0; i < canastillaIds.length; i += BATCH_UPDATE) {
+          const batch = canastillaIds.slice(i, i + BATCH_UPDATE)
+          const { error: updateError } = await supabase
+            .from('canastillas')
+            .update({
+              current_owner_id: targetUserId,
+              status: 'EN_USO_INTERNO',
+            })
+            .in('id', batch)
+
+          if (updateError) throw updateError
+        }
+
+        // Guardar conteo de items pendientes
+        await supabase
+          .from('transfers')
+          .update({ pending_items_count: canastillaIds.length, returned_items_count: 0 })
+          .eq('id', transfer.id)
+      }
 
       // 5. Obtener datos completos para generar el PDF de remisión
       const { data: transferBase, error: transferBaseError } = await supabase
@@ -337,12 +441,14 @@ export function SolicitarTraspasoModal({
         transfer_items: allTransferItems
       }
 
-      // 6. Abrir la remisión PDF
-      await openRemisionTraspasoPDF(fullTransfer as unknown as Transfer)
+      // 6. Abrir la remisión PDF con firma del remitente
+      await openRemisionTraspasoPDF(fullTransfer as unknown as Transfer, signatureData)
 
-      const successMessage = isWashingTransfer
-        ? `✅ Canastillas enviadas a lavado exitosamente.\n\nRemisión de Lavado: ${remisionNumber}`
-        : `✅ Solicitud de traspaso creada exitosamente.\n\nRemisión: ${remisionNumber}`
+      const successMessage = isExternalTransfer
+        ? `Traspaso externo registrado exitosamente.\n\nDestinatario: ${externalData.nombre}\nRemisión: ${remisionNumber}\nCanastillas: ${canastillaIds.length}`
+        : isWashingTransfer
+        ? `Canastillas enviadas a lavado exitosamente.\n\nRemisión de Lavado: ${remisionNumber}`
+        : `Solicitud de traspaso creada exitosamente.\n\nRemisión: ${remisionNumber}`
       alert(successMessage)
       onSuccess()
       handleClose()
@@ -356,6 +462,8 @@ export function SolicitarTraspasoModal({
 
   const handleClose = () => {
     setFormData({ to_user_id: '', reason: '', notes: '' })
+    setExternalData({ nombre: '', cedula: '', telefono: '', empresa: '' })
+    setTipoTraspaso('normal')
     setLotes([])
     setError('')
     setCanastillasRetenidas(0)
@@ -377,7 +485,7 @@ export function SolicitarTraspasoModal({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handlePreSubmit}>
             <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-base sm:text-lg font-semibold text-white">
@@ -416,7 +524,110 @@ export function SolicitarTraspasoModal({
                 </div>
               )}
 
-              {/* Selector de usuario destino */}
+              {/* Selector de tipo de traspaso */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tipo de Traspaso
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTipoTraspaso('normal'); setFormData({ ...formData, to_user_id: '' }) }}
+                    className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      tipoTraspaso === 'normal'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Normal
+                    </div>
+                    <p className="text-xs mt-1 opacity-75">Usuario del sistema</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTipoTraspaso('externo'); setFormData({ ...formData, to_user_id: '' }) }}
+                    className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      tipoTraspaso === 'externo'
+                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Externo
+                    </div>
+                    <p className="text-xs mt-1 opacity-75">Destinatario externo</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Formulario para destinatario externo */}
+              {tipoTraspaso === 'externo' && (
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
+                  <h4 className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Datos del Destinatario Externo
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Nombre completo *</label>
+                      <input
+                        type="text"
+                        value={externalData.nombre}
+                        onChange={(e) => setExternalData({ ...externalData, nombre: e.target.value })}
+                        placeholder="Nombre del destinatario"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Cédula / NIT *</label>
+                      <input
+                        type="text"
+                        value={externalData.cedula}
+                        onChange={(e) => setExternalData({ ...externalData, cedula: e.target.value })}
+                        placeholder="Número de identificación"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
+                      <input
+                        type="text"
+                        value={externalData.telefono}
+                        onChange={(e) => setExternalData({ ...externalData, telefono: e.target.value })}
+                        placeholder="Teléfono de contacto"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
+                      <input
+                        type="text"
+                        value={externalData.empresa}
+                        onChange={(e) => setExternalData({ ...externalData, empresa: e.target.value })}
+                        placeholder="Nombre de la empresa"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-orange-600">
+                    El traspaso externo se acepta automáticamente. Podrás registrar la devolución desde el historial.
+                  </p>
+                </div>
+              )}
+
+              {/* Selector de usuario destino (solo para traspaso normal) */}
+              {tipoTraspaso === 'normal' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Transferir a *
@@ -428,19 +639,18 @@ export function SolicitarTraspasoModal({
                   </div>
                 ) : (
                   <>
-                    <select
+                    <SearchableUserSelect
+                      users={users || []}
                       value={formData.to_user_id}
-                      onChange={(e) => setFormData({ ...formData, to_user_id: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      onChange={(userId) => setFormData({ ...formData, to_user_id: userId })}
+                      placeholder="Buscar por nombre, email..."
                       required
-                    >
-                      <option value="">Seleccionar usuario...</option>
-                      {(users || []).map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.first_name} {user.last_name} {user.role === 'washing_staff' ? '🧼 [LAVADO]' : ''} ({user.email})
-                        </option>
-                      ))}
-                    </select>
+                      renderBadge={(user) =>
+                        user.role === 'washing_staff'
+                          ? <span className="ml-1 text-xs text-cyan-600 font-medium"> 🧼 [LAVADO]</span>
+                          : null
+                      }
+                    />
 
                     {/* Aviso cuando se selecciona personal de lavado */}
                     {formData.to_user_id && users.find(u => u.id === formData.to_user_id)?.role === 'washing_staff' && (
@@ -458,6 +668,7 @@ export function SolicitarTraspasoModal({
                   </>
                 )}
               </div>
+              )}
 
               {/* Selector de cantidades por lote */}
               <div>
@@ -501,7 +712,7 @@ export function SolicitarTraspasoModal({
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     {/* Header de la tabla */}
                     <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-100 text-xs font-medium text-gray-600 uppercase">
-                      <div className="col-span-5">Lote (Tamaño - Color)</div>
+                      <div className="col-span-5">Lote</div>
                       <div className="col-span-2 text-center">Disponibles</div>
                       <div className="col-span-3 text-center">Traspasar</div>
                       <div className="col-span-2 text-center">Acción</div>
@@ -513,12 +724,20 @@ export function SolicitarTraspasoModal({
                         <div key={lote.key} className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-gray-50">
                           <div className="col-span-5 flex items-center gap-2">
                             <div
-                              className="w-4 h-4 rounded-full border border-gray-300"
+                              className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
                               style={{ backgroundColor: lote.color.toLowerCase().replace(/ /g, '') }}
                             />
-                            <span className="text-sm font-medium text-gray-900">
-                              {lote.size} - {lote.color}
-                            </span>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {lote.size} · {lote.color}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {lote.shape || 'Sin forma'} ·{' '}
+                                <span className={lote.tipo_propiedad === 'PROPIA' ? 'text-green-700' : 'text-amber-700'}>
+                                  {lote.tipo_propiedad === 'PROPIA' ? 'Propia' : 'Alquilada'}
+                                </span>
+                              </p>
+                            </div>
                           </div>
                           <div className="col-span-2 text-center">
                             <span className="text-sm font-semibold text-gray-700">
@@ -566,8 +785,8 @@ export function SolicitarTraspasoModal({
                 )}
               </div>
 
-              {/* Mostrar campo de razón solo si NO es personal de lavado */}
-              {!(formData.to_user_id && users.find(u => u.id === formData.to_user_id)?.role === 'washing_staff') && (
+              {/* Mostrar campo de razón solo si NO es personal de lavado y NO es externo */}
+              {tipoTraspaso === 'normal' && !(formData.to_user_id && users.find(u => u.id === formData.to_user_id)?.role === 'washing_staff') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Razón del Traspaso
@@ -618,7 +837,7 @@ export function SolicitarTraspasoModal({
               <Button
                 type="submit"
                 loading={loading}
-                disabled={loading || loadingLotes || (users || []).length === 0 || totalCanastillasTraspasar === 0 || !formData.to_user_id}
+                disabled={loading || loadingLotes || totalCanastillasTraspasar === 0 || (tipoTraspaso === 'normal' && !formData.to_user_id) || (tipoTraspaso === 'externo' && (!externalData.nombre.trim() || !externalData.cedula.trim()))}
                 className="w-full sm:w-auto text-sm order-1 sm:order-2"
               >
                 {loading ? 'Enviando...' : `Enviar (${totalCanastillasTraspasar})`}
@@ -627,6 +846,20 @@ export function SolicitarTraspasoModal({
           </form>
         </div>
       </div>
+
+      {/* Modal de Firma Digital - Entrega only */}
+      <FirmaDigitalModal
+        isOpen={showFirmaModal}
+        onClose={() => setShowFirmaModal(false)}
+        onConfirm={handleFirmaConfirm}
+        loading={loading}
+        title={tipoTraspaso === 'externo' ? 'Firmas de Entrega y Recepción' : 'Firma de Entrega'}
+        entregaLabel="ENTREGA"
+        recibeLabel="RECIBE"
+        mode={tipoTraspaso === 'externo' ? 'both' : 'entrega-only'}
+        confirmButtonText={tipoTraspaso === 'externo' ? 'Firmar y Registrar' : 'Firmar y Enviar'}
+        allowTercero
+      />
     </div>
   )
 }

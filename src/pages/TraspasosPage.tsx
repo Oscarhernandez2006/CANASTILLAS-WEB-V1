@@ -1,19 +1,27 @@
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
+import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { SolicitarTraspasoModal } from '@/components/SolicitarTraspasoModal'
+import { DevolucionTraspasoModal } from '@/components/DevolucionTraspasoModal'
 import { useTraspasos } from '@/hooks/useTraspasos'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/utils/helpers'
-import { openRemisionTraspasoPDF } from '@/utils/remisionTraspasoGenerator'
-import type { Transfer } from '@/types'
+import { openRemisionTraspasoPDF, getRemisionTraspasoPDFBlob } from '@/utils/remisionTraspasoGenerator'
+import { uploadSignedPDF } from '@/services/storageService'
+import type { Transfer, SignatureData } from '@/types'
 
 type TabType = 'solicitudes-recibidas' | 'solicitudes-enviadas' | 'historial'
 
 export function TraspasosPage() {
   const [activeTab, setActiveTab] = useState<TabType>('solicitudes-recibidas')
   const [showSolicitarModal, setShowSolicitarModal] = useState(false)
+  const [showFirmaApprovalModal, setShowFirmaApprovalModal] = useState(false)
+  const [selectedTransferForApproval, setSelectedTransferForApproval] = useState<any>(null)
+  const [firmaLoading, setFirmaLoading] = useState(false)
+  const [showDevolucionModal, setShowDevolucionModal] = useState(false)
+  const [selectedTransferForReturn, setSelectedTransferForReturn] = useState<Transfer | null>(null)
 
   const { user } = useAuthStore()
   const {
@@ -24,34 +32,10 @@ export function TraspasosPage() {
     refreshTraspasos
   } = useTraspasos()
 
-  const handleAprobar = async (id: string) => {
-    if (!confirm('¿Aprobar este traspaso?')) return
-
+  const handleFirmarYAceptar = async (id: string) => {
     try {
-      const now = new Date().toISOString()
-
-      // Obtener el transfer primero para verificar si es de lavado
-      const { data: transferData } = await supabase
-        .from('transfers')
-        .select('is_washing_transfer')
-        .eq('id', id)
-        .single()
-
-      const isWashingTransfer = transferData?.is_washing_transfer || false
-
-      // Actualizar el estado a ACEPTADO (la remisión ya fue generada al crear la solicitud)
-      const { error } = await supabase
-        .from('transfers')
-        .update({
-          status: 'ACEPTADO',
-          responded_at: now
-        })
-        .eq('id', id)
-
-      if (error) throw error
-
-      // Obtener el transfer base sin items (para evitar límite de 1000)
-      const { data: transferBase } = await supabase
+      // Obtener datos del transfer incluyendo firma del remitente
+      const { data: transferData, error: fetchError } = await supabase
         .from('transfers')
         .select(`
           *,
@@ -61,82 +45,158 @@ export function TraspasosPage() {
         .eq('id', id)
         .single()
 
-      if (transferBase) {
-        // Obtener TODOS los transfer_items con paginación
-        const PAGE_SIZE_ITEMS = 1000
-        let allTransferItems: any[] = []
-        let hasMoreItems = true
-        let offsetItems = 0
+      if (fetchError) throw fetchError
 
-        while (hasMoreItems) {
-          const { data: itemsBatch, error: itemsError } = await supabase
-            .from('transfer_items')
-            .select('*, canastilla:canastillas(*)')
-            .eq('transfer_id', id)
-            .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
+      setSelectedTransferForApproval(transferData)
+      setShowFirmaApprovalModal(true)
+    } catch (error: any) {
+      alert('Error al cargar el traspaso: ' + error.message)
+    }
+  }
 
-          if (itemsError) throw itemsError
+  const handleFirmaApprovalConfirm = async (signatureData: SignatureData) => {
+    setShowFirmaApprovalModal(false)
+    setFirmaLoading(true)
 
-          if (itemsBatch && itemsBatch.length > 0) {
-            allTransferItems = [...allTransferItems, ...itemsBatch]
-            offsetItems += PAGE_SIZE_ITEMS
-            hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
-          } else {
-            hasMoreItems = false
-          }
+    try {
+      const transfer = selectedTransferForApproval
+      if (!transfer) throw new Error('No se encontró el traspaso')
+
+      const now = new Date().toISOString()
+      const isWashingTransfer = transfer.is_washing_transfer || false
+
+      // 1. Actualizar estado a ACEPTADO + guardar firma del receptor
+      const updateData: Record<string, any> = {
+          status: 'ACEPTADO',
+          responded_at: now,
+          firma_recibe_base64: signatureData.firma_recibe_base64,
+          firma_recibe_nombre: signatureData.firma_recibe_nombre,
+          firma_recibe_cedula: signatureData.firma_recibe_cedula,
         }
 
-        // Combinar transfer con todos sus items
-        const transfer = {
-          ...transferBase,
-          transfer_items: allTransferItems
-        }
-
-        const canastillaIds = transfer.transfer_items.map((item: any) => item.canastilla_id)
-
-        // Cambiar el propietario y estado de las canastillas
-        // Si es envío a lavado: estado EN_LAVADO
-        // Si es traspaso normal: estado DISPONIBLE
-        const newStatus = isWashingTransfer ? 'EN_LAVADO' : 'DISPONIBLE'
-
-        // Obtener ubicación y área del usuario receptor para la trazabilidad
-        const newLocation = transfer.to_user?.department || null
-        const newArea = transfer.to_user?.area || null
-
-        // Actualizar en lotes de 500 para evitar límite de Supabase
-        const BATCH_SIZE = 500
-        for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
-          const batch = canastillaIds.slice(i, i + BATCH_SIZE)
-          const { error: updateError } = await supabase
-            .from('canastillas')
-            .update({
-              current_owner_id: transfer.to_user_id,
-              status: newStatus,
-              current_location: newLocation,  // Actualizar ubicación con la del usuario receptor
-              current_area: newArea           // Actualizar área con la del usuario receptor
-            })
-            .in('id', batch)
-
-          if (updateError) throw updateError
-        }
-
-        // Abrir la remisión PDF
-        await openRemisionTraspasoPDF(transfer as unknown as Transfer)
-
-        const successMessage = isWashingTransfer
-          ? '✅ Canastillas recibidas para lavado. Remisión: ' + (transfer.remision_number || '')
-          : '✅ Traspaso aprobado exitosamente. Remisión: ' + (transfer.remision_number || '')
-        alert(successMessage)
+      // Agregar firma de tercero si existe (puede venir nueva o ya estar en el transfer)
+      if (signatureData.firma_tercero_base64) {
+        updateData.firma_tercero_base64 = signatureData.firma_tercero_base64
+        updateData.firma_tercero_nombre = signatureData.firma_tercero_nombre
+        updateData.firma_tercero_cedula = signatureData.firma_tercero_cedula
       }
 
+      const { error } = await supabase
+        .from('transfers')
+        .update(updateData)
+        .eq('id', transfer.id)
+
+      if (error) throw error
+
+      // 2. Obtener todos los transfer_items con paginación
+      const PAGE_SIZE_ITEMS = 1000
+      let allTransferItems: any[] = []
+      let hasMoreItems = true
+      let offsetItems = 0
+
+      while (hasMoreItems) {
+        const { data: itemsBatch, error: itemsError } = await supabase
+          .from('transfer_items')
+          .select('*, canastilla:canastillas(*)')
+          .eq('transfer_id', transfer.id)
+          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
+
+        if (itemsError) throw itemsError
+
+        if (itemsBatch && itemsBatch.length > 0) {
+          allTransferItems = [...allTransferItems, ...itemsBatch]
+          offsetItems += PAGE_SIZE_ITEMS
+          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
+        } else {
+          hasMoreItems = false
+        }
+      }
+
+      const canastillaIds = allTransferItems.map((item: any) => item.canastilla_id)
+
+      // 3. Mover canastillas al nuevo dueño
+      const newStatus = isWashingTransfer ? 'EN_LAVADO' : 'DISPONIBLE'
+      const newLocation = transfer.to_user?.department || null
+      const newArea = transfer.to_user?.area || null
+
+      const BATCH_SIZE = 500
+      for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
+        const batch = canastillaIds.slice(i, i + BATCH_SIZE)
+        const { error: updateError } = await supabase
+          .from('canastillas')
+          .update({
+            current_owner_id: transfer.to_user_id,
+            status: newStatus,
+            current_location: newLocation,
+            current_area: newArea
+          })
+          .in('id', batch)
+
+        if (updateError) throw updateError
+      }
+
+      // 4. Combinar ambas firmas para el PDF final
+      const fullSignatureData: SignatureData = {
+        firma_entrega_base64: transfer.firma_entrega_base64 || '',
+        firma_entrega_nombre: transfer.firma_entrega_nombre || '',
+        firma_entrega_cedula: transfer.firma_entrega_cedula || '',
+        firma_recibe_base64: signatureData.firma_recibe_base64,
+        firma_recibe_nombre: signatureData.firma_recibe_nombre,
+        firma_recibe_cedula: signatureData.firma_recibe_cedula,
+        firma_tercero_base64: signatureData.firma_tercero_base64 || transfer.firma_tercero_base64 || undefined,
+        firma_tercero_nombre: signatureData.firma_tercero_nombre || transfer.firma_tercero_nombre || undefined,
+        firma_tercero_cedula: signatureData.firma_tercero_cedula || transfer.firma_tercero_cedula || undefined,
+      }
+
+      const fullTransfer = {
+        ...transfer,
+        transfer_items: allTransferItems
+      } as unknown as Transfer
+
+      // 5. Generar PDF con ambas firmas y subir a storage
+      try {
+        const pdfBlob = await getRemisionTraspasoPDFBlob(fullTransfer, fullSignatureData)
+        const pdfUrl = await uploadSignedPDF(
+          pdfBlob,
+          'transfers',
+          `Remision_${transfer.remision_number}.pdf`
+        )
+
+        if (pdfUrl) {
+          await supabase
+            .from('transfers')
+            .update({ signed_pdf_url: pdfUrl })
+            .eq('id', transfer.id)
+        }
+      } catch (pdfErr) {
+        console.error('Error al subir PDF firmado:', pdfErr)
+      }
+
+      // 6. Abrir PDF con ambas firmas
+      await openRemisionTraspasoPDF(fullTransfer, fullSignatureData)
+
+      const successMessage = isWashingTransfer
+        ? 'Canastillas recibidas para lavado. Remisión: ' + (transfer.remision_number || '')
+        : 'Traspaso aceptado exitosamente. Remisión: ' + (transfer.remision_number || '')
+      alert(successMessage)
+
+      setSelectedTransferForApproval(null)
       refreshTraspasos()
     } catch (error: any) {
-      alert('❌ Error: ' + error.message)
+      alert('Error: ' + error.message)
+    } finally {
+      setFirmaLoading(false)
     }
   }
 
   const handleVerRemision = async (transfer: any) => {
     try {
+      // Si hay PDF firmado en storage, abrir directamente
+      if (transfer.signed_pdf_url) {
+        window.open(transfer.signed_pdf_url, '_blank')
+        return
+      }
+
       // Obtener el transfer base sin items (para evitar límite de 1000)
       const { data: transferBase } = await supabase
         .from('transfers')
@@ -179,10 +239,23 @@ export function TraspasosPage() {
           transfer_items: allTransferItems
         }
 
-        await openRemisionTraspasoPDF(fullTransfer as unknown as Transfer)
+        // Construir signatureData con las firmas que existan en DB
+        const signatureData: SignatureData = {
+          firma_entrega_base64: transferBase.firma_entrega_base64 || '',
+          firma_entrega_nombre: transferBase.firma_entrega_nombre || '',
+          firma_entrega_cedula: transferBase.firma_entrega_cedula || '',
+          firma_recibe_base64: transferBase.firma_recibe_base64 || '',
+          firma_recibe_nombre: transferBase.firma_recibe_nombre || '',
+          firma_recibe_cedula: transferBase.firma_recibe_cedula || '',
+          firma_tercero_base64: transferBase.firma_tercero_base64 || undefined,
+          firma_tercero_nombre: transferBase.firma_tercero_nombre || undefined,
+          firma_tercero_cedula: transferBase.firma_tercero_cedula || undefined,
+        }
+
+        await openRemisionTraspasoPDF(fullTransfer as unknown as Transfer, signatureData)
       }
     } catch (error: any) {
-      alert('❌ Error al generar la remisión: ' + error.message)
+      alert('Error al generar la remisión: ' + error.message)
     }
   }
 
@@ -232,12 +305,38 @@ export function TraspasosPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, transfer?: any) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
       PENDIENTE: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pendiente' },
       ACEPTADO: { bg: 'bg-green-100', text: 'text-green-800', label: 'Aceptado' },
       RECHAZADO: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rechazado' },
       CANCELADO: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Cancelado' },
+    }
+
+    // Para traspasos externos aceptados, mostrar estado de devolución
+    if (status === 'ACEPTADO' && transfer?.is_external_transfer) {
+      const returned = transfer.returned_items_count || 0
+      const pending = transfer.pending_items_count ?? (transfer.items_count || 0)
+
+      if (pending <= 0 && returned > 0) {
+        return (
+          <span className="px-3 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+            Devuelto Total
+          </span>
+        )
+      }
+      if (returned > 0 && pending > 0) {
+        return (
+          <span className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+            Devuelto Parcial ({returned}/{returned + pending})
+          </span>
+        )
+      }
+      return (
+        <span className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+          Externo - Pendiente
+        </span>
+      )
     }
 
     const badge = badges[status] || badges.PENDIENTE
@@ -378,14 +477,17 @@ export function TraspasosPage() {
                             {solicitud.status === 'PENDIENTE' && (
                               <>
                                 <button
-                                  onClick={() => handleAprobar(solicitud.id)}
-                                  className="text-green-600 hover:text-green-900 font-medium"
+                                  onClick={() => handleFirmarYAceptar(solicitud.id)}
+                                  className="inline-flex items-center text-green-600 hover:text-green-900 font-medium text-sm"
                                 >
-                                  Aprobar
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                  </svg>
+                                  Firmar y Aceptar
                                 </button>
                                 <button
                                   onClick={() => handleRechazar(solicitud.id)}
-                                  className="text-red-600 hover:text-red-900 font-medium"
+                                  className="text-red-600 hover:text-red-900 font-medium text-sm"
                                 >
                                   Rechazar
                                 </button>
@@ -537,6 +639,11 @@ export function TraspasosPage() {
                           {item.remision_number && (
                             <div className="text-xs text-purple-600 font-medium mt-1">
                               {item.remision_number}
+                              {item.is_external_transfer && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px]">
+                                  EXTERNO
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -551,20 +658,36 @@ export function TraspasosPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          {getStatusBadge(item.status)}
+                          {getStatusBadge(item.status, item)}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          {item.status === 'ACEPTADO' && item.remision_number && (
-                            <button
-                              onClick={() => handleVerRemision(item)}
-                              className="inline-flex items-center text-purple-600 hover:text-purple-900 font-medium text-sm"
-                            >
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              Ver Remisión
-                            </button>
-                          )}
+                          <div className="flex flex-col items-end gap-1">
+                            {item.status === 'ACEPTADO' && item.remision_number && (
+                              <button
+                                onClick={() => handleVerRemision(item)}
+                                className="inline-flex items-center text-purple-600 hover:text-purple-900 font-medium text-sm"
+                              >
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Ver Remisión
+                              </button>
+                            )}
+                            {item.status === 'ACEPTADO' && item.is_external_transfer && (item.pending_items_count ?? (item.items_count || 0)) > 0 && (
+                              <button
+                                onClick={() => {
+                                  setSelectedTransferForReturn(item as unknown as Transfer)
+                                  setShowDevolucionModal(true)
+                                }}
+                                className="inline-flex items-center text-orange-600 hover:text-orange-900 font-medium text-sm"
+                              >
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                </svg>
+                                Registrar Devolución
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -581,6 +704,44 @@ export function TraspasosPage() {
         isOpen={showSolicitarModal}
         onClose={() => setShowSolicitarModal(false)}
         onSuccess={() => refreshTraspasos()}
+      />
+
+      {/* Modal de Firma Digital - Receptor firma para aceptar */}
+      <FirmaDigitalModal
+        isOpen={showFirmaApprovalModal}
+        onClose={() => {
+          setShowFirmaApprovalModal(false)
+          setSelectedTransferForApproval(null)
+        }}
+        onConfirm={handleFirmaApprovalConfirm}
+        loading={firmaLoading}
+        title="Firmar y Aceptar Traspaso"
+        entregaLabel="ENTREGA"
+        recibeLabel="RECIBE"
+        mode="recibe-only"
+        prefillEntrega={selectedTransferForApproval ? {
+          nombre: selectedTransferForApproval.firma_entrega_nombre || `${selectedTransferForApproval.from_user?.first_name || ''} ${selectedTransferForApproval.from_user?.last_name || ''}`,
+          cedula: selectedTransferForApproval.firma_entrega_cedula || '',
+          firma_base64: selectedTransferForApproval.firma_entrega_base64 || '',
+        } : undefined}
+        confirmButtonText="Firmar y Aceptar"
+        allowTercero
+        prefillTercero={selectedTransferForApproval?.firma_tercero_base64 ? {
+          nombre: selectedTransferForApproval.firma_tercero_nombre || '',
+          cedula: selectedTransferForApproval.firma_tercero_cedula || '',
+          firma_base64: selectedTransferForApproval.firma_tercero_base64,
+        } : undefined}
+      />
+
+      {/* Modal Devolución de Traspaso Externo */}
+      <DevolucionTraspasoModal
+        isOpen={showDevolucionModal}
+        onClose={() => {
+          setShowDevolucionModal(false)
+          setSelectedTransferForReturn(null)
+        }}
+        onSuccess={() => refreshTraspasos()}
+        transfer={selectedTransferForReturn}
       />
     </DashboardLayout>
   )

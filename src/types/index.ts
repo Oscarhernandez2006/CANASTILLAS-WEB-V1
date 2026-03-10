@@ -1,3 +1,16 @@
+export interface SignatureData {
+  firma_entrega_base64: string
+  firma_recibe_base64: string
+  firma_entrega_nombre: string
+  firma_recibe_nombre: string
+  firma_entrega_cedula: string
+  firma_recibe_cedula: string
+  // Firma tercero (opcional)
+  firma_tercero_base64?: string
+  firma_tercero_nombre?: string
+  firma_tercero_cedula?: string
+}
+
 export interface User {
   id: string
   email: string
@@ -88,7 +101,7 @@ export interface Rental {
   id: string
   sale_point_id: string
   rental_type: 'INTERNO' | 'EXTERNO'
-  status: 'ACTIVO' | 'RETORNADO' | 'VENCIDO' | 'PERDIDO'
+  status: 'ACTIVO' | 'PENDIENTE_FIRMA' | 'RETORNADO' | 'VENCIDO' | 'PERDIDO'
   start_date: string
   estimated_return_date: string | null
   actual_return_date: string | null
@@ -105,6 +118,14 @@ export interface Rental {
   pending_items_count?: number
   returned_items_count?: number
   total_invoiced?: number
+  // Firma digital
+  firma_entrega_base64?: string
+  firma_recibe_base64?: string
+  firma_entrega_nombre?: string
+  firma_recibe_nombre?: string
+  firma_entrega_cedula?: string
+  firma_recibe_cedula?: string
+  signed_pdf_url?: string
   // Relaciones
   sale_point?: SalePoint
   rental_items?: RentalItem[]
@@ -198,18 +219,70 @@ export interface Transfer {
   remision_number?: string
   remision_generated_at?: string
   is_washing_transfer?: boolean  // Si es traspaso a personal de lavado
+  is_external_transfer?: boolean  // Si es traspaso a destinatario externo
+  external_recipient_name?: string
+  external_recipient_cedula?: string
+  external_recipient_phone?: string
+  external_recipient_empresa?: string
+  // Campos para devoluciones de traspasos externos
+  returned_items_count?: number
+  pending_items_count?: number
   requested_at: string
   responded_at?: string
   created_at: string
   updated_at: string
   transfer_items?: TransferItem[]
   items_count?: number  // Conteo real de canastillas (sin límite de 1000)
+  // Firma digital
+  firma_entrega_base64?: string
+  firma_recibe_base64?: string
+  firma_entrega_nombre?: string
+  firma_recibe_nombre?: string
+  firma_entrega_cedula?: string
+  firma_recibe_cedula?: string
+  // Firma tercero (opcional)
+  firma_tercero_base64?: string
+  firma_tercero_nombre?: string
+  firma_tercero_cedula?: string
+  signed_pdf_url?: string
+  // Devoluciones de traspaso
+  transfer_returns?: TransferReturn[]
 }
 
 export interface TransferItem {
   id: string
   transfer_id: string
   canastilla_id: string
+  canastilla?: Canastilla
+  created_at: string
+}
+
+// ========== MÓDULO DE DEVOLUCIONES DE TRASPASOS EXTERNOS ==========
+
+export interface TransferReturn {
+  id: string
+  transfer_id: string
+  return_date: string
+  notes?: string
+  processed_by: string
+  processed_by_user?: User
+  created_at: string
+  transfer_return_items?: TransferReturnItem[]
+  // Firma digital
+  firma_entrega_base64?: string
+  firma_recibe_base64?: string
+  firma_entrega_nombre?: string
+  firma_recibe_nombre?: string
+  firma_entrega_cedula?: string
+  firma_recibe_cedula?: string
+  signed_pdf_url?: string
+}
+
+export interface TransferReturnItem {
+  id: string
+  transfer_return_id: string
+  canastilla_id: string
+  transfer_item_id?: string
   canastilla?: Canastilla
   created_at: string
 }
@@ -228,6 +301,14 @@ export interface RentalReturn {
   processed_by_user?: User
   created_at: string
   rental_return_items?: RentalReturnItem[]
+  // Firma digital
+  firma_entrega_base64?: string
+  firma_recibe_base64?: string
+  firma_entrega_nombre?: string
+  firma_recibe_nombre?: string
+  firma_entrega_cedula?: string
+  firma_recibe_cedula?: string
+  signed_pdf_url?: string
 }
 
 export interface RentalReturnItem {
@@ -279,6 +360,14 @@ export interface WashingOrder {
   created_at: string
   updated_at: string
   washing_items?: WashingOrderItem[]
+  // Firma digital
+  firma_entrega_base64?: string
+  firma_recibe_base64?: string
+  firma_entrega_nombre?: string
+  firma_recibe_nombre?: string
+  firma_entrega_cedula?: string
+  firma_recibe_cedula?: string
+  signed_pdf_url?: string
 }
 
 export interface WashingOrderItem {

@@ -80,7 +80,7 @@ export function DashboardPage() {
         </div>
 
         {/* Tarjetas de estadísticas */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 lg:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 lg:gap-6">
           {/* Card 1 - Total Canastillas */}
           <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">

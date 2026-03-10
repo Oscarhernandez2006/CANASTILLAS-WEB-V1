@@ -1,189 +1,36 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Rental } from '@/types'
+import type { Rental, SignatureData } from '@/types'
+import { C, ACCENT, loadLogoBase64, drawHeader, drawSectionTitle, drawInfoCard, drawDetailLine, drawTotalBox, drawSignatures, drawFooter, tableStyles } from '@/utils/pdfStyles'
 
-// Función para convertir imagen a base64
-const getBase64FromUrl = async (url: string): Promise<string> => {
-  try {
-    const response = await fetch(url)
-    const blob = await response.blob()
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch (error) {
-    console.error('Error loading image:', error)
-    throw error
-  }
-}
-
-export const generateRemisionPDF = async (rental: Rental, remisionNumber: string) => {
+export const generateRemisionPDF = async (rental: Rental, remisionNumber: string, signatureData?: SignatureData) => {
   const doc = new jsPDF()
-  
-  // Paleta de colores empresarial profesional
-  const black: [number, number, number] = [0, 0, 0]
-  const darkGray: [number, number, number] = [51, 51, 51]
-  const mediumGray: [number, number, number] = [102, 102, 102]
-  const lightGray: [number, number, number] = [242, 242, 242]
-  const borderGray: [number, number, number] = [217, 217, 217]
-  const accentBlue: [number, number, number] = [41, 98, 255]
-  
+  const accent = ACCENT.blue.main
   const pageHeight = doc.internal.pageSize.height
-  const marginBottom = 60 // Espacio para firmas
-  
-  // ============================================
-  // HEADER EMPRESARIAL
-  // ============================================
-  
-  // Línea superior de acento
-  doc.setFillColor(...accentBlue)
-  doc.rect(0, 0, 210, 2, 'F')
-  
-  // Cargar logo
-  let logoLoaded = false
-  try {
-    let logoBase64: string | null = null
-    const logoPaths = [
-      `${window.location.origin}/logo.png`,
-      '/logo.png',
-      './logo.png'
-    ]
-    
-    for (const path of logoPaths) {
-      try {
-        logoBase64 = await getBase64FromUrl(path)
-        break
-      } catch (e) {
-        continue
-      }
-    }
-    
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 15, 10, 30, 30)
-      logoLoaded = true
-    }
-  } catch (error) {
-    console.error('Error loading logo:', error)
-  }
-  
-  // Información de la empresa
-  const companyX = logoLoaded ? 50 : 15
-  doc.setTextColor(...darkGray)
-  doc.setFontSize(24)
-  doc.setFont('helvetica', 'bold')
-  doc.text('SANTACRUZ', companyX, 20)
-  
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text('Sistema de Gestión de Canastillas', companyX, 27)
-  doc.text('Barranquilla, Atlántico - Colombia', companyX, 32)
-  doc.text('Tel: +57 311 758 0698', companyX, 37)
-  
-  // Cuadro de remisión
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(1)
-  doc.rect(140, 10, 55, 30)
-  
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('REMISIÓN', 167.5, 18, { align: 'center' })
-  
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.text(remisionNumber, 167.5, 26, { align: 'center' })
-  
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
+
+  // Header profesional
+  const logoBase64 = await loadLogoBase64()
   const entregaDate = new Date(rental.start_date).toLocaleDateString('es-CO', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
+    day: 'numeric', month: 'long', year: 'numeric'
   })
-  doc.text(`Fecha: ${entregaDate}`, 167.5, 34, { align: 'center' })
-  
-  // Línea divisoria
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.line(15, 45, 195, 45)
-  
-  // ============================================
-  // INFORMACIÓN DEL CLIENTE
-  // ============================================
-  let yPos = 55
-  
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('ENTREGAR A:', 15, yPos)
-  
-  yPos += 2
-  doc.setDrawColor(...accentBlue)
-  doc.setLineWidth(2)
-  doc.line(15, yPos, 45, yPos)
-  
-  yPos += 8
-  
-  // Nombre del cliente
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  doc.text(rental.sale_point?.name || 'N/A', 15, yPos)
-  
-  // Badge de tipo
-  const nameWidth = doc.getTextWidth(rental.sale_point?.name || 'N/A')
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.rect(17 + nameWidth, yPos - 3.5, 25, 5)
-  doc.setFontSize(7)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...mediumGray)
-  const badgeText = rental.sale_point?.client_type === 'CLIENTE_EXTERNO' ? 'EXTERNO' : 'P. VENTA'
-  doc.text(badgeText, 17 + nameWidth + 12.5, yPos - 0.5, { align: 'center' })
-  
-  yPos += 7
-  
-  // Detalles del cliente
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  
-  const clientInfo = [
+  let yPos = drawHeader(doc, accent, ACCENT.blue.dark, logoBase64, 'REMISIÓN DE ALQUILER', remisionNumber, entregaDate)
+
+  // Información del cliente
+  yPos = drawSectionTitle(doc, 'ENTREGAR A', yPos, accent)
+
+  const clientLines = [
     `Contacto: ${rental.sale_point?.contact_name || 'N/A'}`,
     `Teléfono: ${rental.sale_point?.contact_phone || 'N/A'}`,
     `Dirección: ${rental.sale_point?.address || 'N/A'}`,
     `Ciudad: ${rental.sale_point?.city || 'N/A'}, ${rental.sale_point?.region || 'N/A'}`,
   ]
-  
-  if (rental.sale_point?.identification) {
-    clientInfo.push(`NIT/CC: ${rental.sale_point.identification}`)
-  }
-  
-  clientInfo.forEach((info) => {
-    doc.text(info, 15, yPos)
-    yPos += 5
-  })
-  
-  // ============================================
-  // CONDICIONES DEL ALQUILER
-  // ============================================
-  yPos += 5
-  
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('CONDICIONES DEL ALQUILER', 15, yPos)
-  
-  yPos += 2
-  doc.setDrawColor(...accentBlue)
-  doc.setLineWidth(2)
-  doc.line(15, yPos, 85, yPos)
-  
-  yPos += 10
+  if (rental.sale_point?.identification) clientLines.push(`NIT/CC: ${rental.sale_point.identification}`)
+
+  const badgeText = rental.sale_point?.client_type === 'CLIENTE_EXTERNO' ? 'EXTERNO' : 'P. VENTA'
+  yPos = drawInfoCard(doc, yPos, accent, rental.sale_point?.name || 'N/A', clientLines, { badge: badgeText })
+
+  // Condiciones del alquiler
+  yPos = drawSectionTitle(doc, 'CONDICIONES DEL ALQUILER', yPos, accent)
   
   const startDate = new Date(rental.start_date).toLocaleDateString('es-CO')
   const estimatedReturnDate = rental.estimated_return_date 
@@ -197,48 +44,16 @@ export const generateRemisionPDF = async (rental: Rental, remisionNumber: string
     head: [['FECHA DE ENTREGA', 'FECHA ESTIMADA RETORNO', 'DÍAS ESTIMADOS']],
     body: [[startDate, estimatedReturnDate, `${estimatedDays} días`]],
     theme: 'plain',
-    styles: {
-      fontSize: 9,
-      cellPadding: 5,
-      textColor: [...darkGray],
-    },
-    headStyles: {
-      fillColor: [255, 255, 255],
-      textColor: [...mediumGray],
-      fontStyle: 'bold',
-      fontSize: 8,
-      halign: 'center',
-    },
-    bodyStyles: {
-      fontStyle: 'bold',
-      fontSize: 10,
-      halign: 'center',
-      fillColor: [...lightGray],
-    },
-    columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 60 },
-      2: { cellWidth: 60 },
-    },
+    styles: { fontSize: 9, cellPadding: 5, textColor: [...C.dark] },
+    headStyles: { fillColor: [...C.light], textColor: [...C.medium], fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
+    bodyStyles: { fontStyle: 'bold', fontSize: 10, halign: 'center', fillColor: [255, 255, 255] },
+    columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 60 }, 2: { cellWidth: 60 } },
   })
   
-  yPos = (doc as any).lastAutoTable.finalY + 10
+  yPos = (doc as any).lastAutoTable.finalY + 8
   
-  // ============================================
-  // CANASTILLAS ENTREGADAS
-  // ============================================
-  
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('CANASTILLAS ENTREGADAS', 15, yPos)
-  
-  yPos += 2
-  doc.setDrawColor(...accentBlue)
-  doc.setLineWidth(2)
-  doc.line(15, yPos, 80, yPos)
-  
-  yPos += 8
+  // Canastillas entregadas
+  yPos = drawSectionTitle(doc, 'CANASTILLAS ENTREGADAS', yPos, accent)
 
   // Agrupar canastillas por tamaño, color, forma y condición
   type CanastillaGroup = { size: string; color: string; shape: string; condition: string; count: number }
@@ -270,26 +85,8 @@ export const generateRemisionPDF = async (rental: Rental, remisionNumber: string
     startY: yPos,
     head: [['#', 'TAMAÑO', 'COLOR', 'FORMA', 'CONDICIÓN', 'CANTIDAD']],
     body: canastillas,
-    theme: 'striped',
-    styles: {
-      fontSize: 9,
-      cellPadding: 4,
-      lineColor: [...borderGray],
-      lineWidth: 0.1,
-    },
-    headStyles: {
-      fillColor: [...darkGray],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 9,
-      halign: 'center',
-    },
-    bodyStyles: {
-      textColor: [...darkGray],
-    },
-    alternateRowStyles: {
-      fillColor: [...lightGray],
-    },
+    theme: 'grid',
+    ...tableStyles(accent),
     columnStyles: {
       0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
       1: { cellWidth: 35, halign: 'center' },
@@ -300,164 +97,72 @@ export const generateRemisionPDF = async (rental: Rental, remisionNumber: string
     },
   })
   
-  yPos = (doc as any).lastAutoTable.finalY + 12
+  yPos = (doc as any).lastAutoTable.finalY + 10
   
-  // ============================================
-  // VALORES DEL ALQUILER
-  // ============================================
-  
+  // Valores del alquiler
   const canastillasCount = rental.rental_items?.length || 0
   const dailyRate = rental.daily_rate
   const estimatedTotal = estimatedDays > 0 ? canastillasCount * dailyRate * estimatedDays : 0
   
-  // Verificar si necesitamos nueva página
-  if (yPos > pageHeight - marginBottom - 50) {
+  if (yPos > pageHeight - 75 - 50) {
     doc.addPage()
     yPos = 20
   }
   
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
+  doc.setDrawColor(...C.border)
+  doc.setLineWidth(0.3)
   doc.line(15, yPos, 195, yPos)
-  
-  yPos += 8
-  
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  
-  const rightX = 195
-  const labelX = 115
-  
-  doc.text('Cantidad de canastillas:', labelX, yPos)
-  doc.text(`${canastillasCount} unidades`, rightX, yPos, { align: 'right' })
+  yPos += 7
+
+  drawDetailLine(doc, 'Cantidad de canastillas:', `${canastillasCount} unidades`, yPos)
   yPos += 5
-  
-  doc.text('Tarifa diaria por canastilla:', labelX, yPos)
-  doc.text(`$${dailyRate.toLocaleString('es-CO')}`, rightX, yPos, { align: 'right' })
+  drawDetailLine(doc, 'Tarifa diaria por canastilla:', `$${dailyRate.toLocaleString('es-CO')}`, yPos)
   yPos += 5
-  
-  doc.text('Días estimados:', labelX, yPos)
-  doc.text(`${estimatedDays} días`, rightX, yPos, { align: 'right' })
+  drawDetailLine(doc, 'Días estimados:', `${estimatedDays} días`, yPos)
   yPos += 8
+
+  drawTotalBox(doc, 'TOTAL ESTIMADO:', `$${estimatedTotal.toLocaleString('es-CO')} COP`, yPos, accent)
+  yPos += 16
   
-  // Cuadro del total estimado
-  doc.setDrawColor(...darkGray)
-  doc.setLineWidth(1.5)
-  doc.rect(115, yPos - 3, 80, 12)
-  
-  doc.setFontSize(12)
+  // Observaciones
+  doc.setFontSize(7.5)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  doc.text('TOTAL ESTIMADO:', labelX + 5, yPos + 5)
-  
-  doc.setFontSize(14)
-  const totalText = `$${estimatedTotal.toLocaleString('es-CO')} COP`
-  doc.text(totalText, rightX - 5, yPos + 5, { align: 'right' })
-  
-  yPos += 18
-  
-  // ============================================
-  // OBSERVACIONES
-  // ============================================
-  
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
+  doc.setTextColor(...C.dark)
   doc.text('OBSERVACIONES:', 15, yPos)
-  
   yPos += 4
   doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
+  doc.setTextColor(...C.medium)
   doc.setFontSize(7)
-  
   const observaciones = [
     '• El valor final se calculará según los días reales de uso.',
     '• Las canastillas deben devolverse en las mismas condiciones.',
     '• El cliente es responsable de cualquier daño o pérdida.',
   ]
-  
-  observaciones.forEach((obs) => {
-    doc.text(obs, 15, yPos)
-    yPos += 4
-  })
-  
-  // ============================================
-  // SECCIÓN DE FIRMAS
-  // ============================================
-  
-  const firmasY = pageHeight - 50
-  
-  // Línea divisoria
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.line(15, firmasY, 195, firmasY)
-  
-  // Título de firmas
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('FIRMAS', 105, firmasY + 7, { align: 'center' })
-  
-  // Columna: ENTREGA
-  const col1X = 50
-  let firmaY = firmasY + 20
-  
-  doc.setDrawColor(...darkGray)
-  doc.setLineWidth(0.5)
-  doc.line(20, firmaY, 80, firmaY)
-  
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('ENTREGA', col1X, firmaY + 5, { align: 'center' })
-  
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(...mediumGray)
-  doc.text('Nombre:', 20, firmaY + 10)
-  doc.text('Cédula:', 20, firmaY + 15)
-  
-  // Columna: RECIBE
-  const col2X = 160
-  
-  doc.setDrawColor(...darkGray)
-  doc.setLineWidth(0.5)
-  doc.line(130, firmaY, 190, firmaY)
-  
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('RECIBE', col2X, firmaY + 5, { align: 'center' })
-  
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(...mediumGray)
-  doc.text('Nombre:', 130, firmaY + 10)
-  doc.text('Cédula:', 130, firmaY + 15)
-  
-  // ============================================
-  // FOOTER
-  // ============================================
-  
-  doc.setFontSize(7)
-  doc.setTextColor(180, 180, 180)
-  const docText = `Remisión generada: ${new Date().toLocaleString('es-CO')}`
-  const docWidth = doc.getTextWidth(docText)
-  doc.text(docText, (210 - docWidth) / 2, pageHeight - 8)
+  observaciones.forEach((obs) => { doc.text(obs, 15, yPos); yPos += 4 })
+
+  // Firmas
+  drawSignatures(doc, signatureData, ['ENTREGA', 'RECIBE'])
+
+  // Footer
+  drawFooter(doc, accent)
   
   return doc
 }
 
-export const downloadRemisionPDF = async (rental: Rental, remisionNumber: string) => {
-  const doc = await generateRemisionPDF(rental, remisionNumber)
+export const downloadRemisionPDF = async (rental: Rental, remisionNumber: string, signatureData?: SignatureData) => {
+  const doc = await generateRemisionPDF(rental, remisionNumber, signatureData)
   const fileName = `Remision_${remisionNumber}.pdf`
   doc.save(fileName)
 }
 
-export const openRemisionPDF = async (rental: Rental, remisionNumber: string) => {
-  const doc = await generateRemisionPDF(rental, remisionNumber)
+export const openRemisionPDF = async (rental: Rental, remisionNumber: string, signatureData?: SignatureData) => {
+  const doc = await generateRemisionPDF(rental, remisionNumber, signatureData)
   const pdfBlob = doc.output('blob')
   const pdfUrl = URL.createObjectURL(pdfBlob)
   window.open(pdfUrl, '_blank')
+}
+
+export const getRemisionPDFBlob = async (rental: Rental, remisionNumber: string, signatureData?: SignatureData): Promise<Blob> => {
+  const doc = await generateRemisionPDF(rental, remisionNumber, signatureData)
+  return doc.output('blob')
 }

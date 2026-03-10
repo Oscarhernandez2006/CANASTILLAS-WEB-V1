@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
+import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { CrearAlquilerModal } from '@/components/CrearAlquilerModal'
 import { ProcesarRetornoModal } from '@/components/ProcesarRetornoModal'
 import { DetalleAlquilerModal } from '@/components/DetalleAlquilerModal'
@@ -8,10 +9,12 @@ import { useRentals } from '@/hooks/useRentals'
 import { useRentalSettings } from '@/hooks/useRentalSettings'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useAuthStore } from '@/store/authStore'
+import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/utils/helpers'
 import { openInvoicePDF, downloadInvoicePDF } from '@/utils/pdfGenerator'
-import { openRemisionPDF } from '@/utils/remisionGenerator'
-import type { Rental } from '@/types'
+import { openRemisionPDF, getRemisionPDFBlob } from '@/utils/remisionGenerator'
+import { uploadSignedPDF } from '@/services/storageService'
+import type { Rental, SignatureData } from '@/types'
 
 type TabType = 'activos' | 'historial' | 'configuracion'
 
@@ -21,12 +24,16 @@ export function AlquileresPage() {
   const [showRetornoModal, setShowRetornoModal] = useState(false)
   const [showDetalleModal, setShowDetalleModal] = useState(false)
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null)
+  const [showFirmaClienteModal, setShowFirmaClienteModal] = useState(false)
+  const [selectedRentalForSignature, setSelectedRentalForSignature] = useState<any>(null)
+  const [firmaLoading, setFirmaLoading] = useState(false)
 
   // Estados para edición de configuración
   const [isEditingConfig, setIsEditingConfig] = useState(false)
   const [editDailyRate, setEditDailyRate] = useState<string>('')
   const [editInternalRate, setEditInternalRate] = useState<string>('')
   const [savingConfig, setSavingConfig] = useState(false)
+  const [filterType, setFilterType] = useState<'TODOS' | 'INTERNO' | 'EXTERNO'>('TODOS')
 
   const { activeRentals, completedRentals, loading, refreshRentals } = useRentals()
   const { settings, loading: loadingSettings, updateSettings, refreshSettings } = useRentalSettings()
@@ -38,6 +45,15 @@ export function AlquileresPage() {
 
   // Permiso para editar configuración: super_admin o quien tenga el permiso
   const canEditConfig = user?.role === 'super_admin' || permissions.hasPermission('alquileres.editar_configuracion')
+
+  // Filtrar alquileres por tipo
+  const filteredActiveRentals = filterType === 'TODOS'
+    ? activeRentals
+    : activeRentals.filter(r => r.rental_type === filterType)
+
+  const filteredCompletedRentals = filterType === 'TODOS'
+    ? completedRentals
+    : completedRentals.filter(r => r.rental_type === filterType)
 
   // Sincronizar valores de edición cuando settings cargue
   useEffect(() => {
@@ -58,6 +74,161 @@ export function AlquileresPage() {
   const calculateCurrentTotal = (startDate: string, canastillasCount: number, dailyRate: number) => {
     const days = calculateCurrentDays(startDate)
     return days * canastillasCount * dailyRate
+  }
+
+  const handleFirmaCliente = async (rental: Rental) => {
+    try {
+      // Obtener datos del rental con firma de entrega
+      const { data: rentalData, error: fetchError } = await supabase
+        .from('rentals')
+        .select(`*, sale_point:sale_points(*)`)
+        .eq('id', rental.id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      setSelectedRentalForSignature(rentalData)
+      setShowFirmaClienteModal(true)
+    } catch (error: any) {
+      alert('Error al cargar el alquiler: ' + error.message)
+    }
+  }
+
+  const handleVerRemision = async (rental: Rental) => {
+    try {
+      // Si hay PDF firmado en storage, abrir directamente
+      if ((rental as any).signed_pdf_url) {
+        window.open((rental as any).signed_pdf_url, '_blank')
+        return
+      }
+
+      // Obtener datos completos del rental
+      const { data: rentalData, error: fetchError } = await supabase
+        .from('rentals')
+        .select(`*, sale_point:sale_points(*)`)
+        .eq('id', rental.id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      // Obtener todos los rental_items con paginación
+      const PAGE_SIZE_ITEMS = 1000
+      let allRentalItems: any[] = []
+      let hasMoreItems = true
+      let offsetItems = 0
+
+      while (hasMoreItems) {
+        const { data: itemsBatch, error: itemsFetchError } = await supabase
+          .from('rental_items')
+          .select('*, canastilla:canastillas(*)')
+          .eq('rental_id', rental.id)
+          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
+        if (itemsFetchError) throw itemsFetchError
+        if (itemsBatch && itemsBatch.length > 0) {
+          allRentalItems = [...allRentalItems, ...itemsBatch]
+          offsetItems += PAGE_SIZE_ITEMS
+          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
+        } else {
+          hasMoreItems = false
+        }
+      }
+
+      const rentalComplete = { ...rentalData, rental_items: allRentalItems }
+
+      // Construir signatureData con las firmas que existan en DB
+      const signatureData: SignatureData = {
+        firma_entrega_base64: rentalData.firma_entrega_base64 || '',
+        firma_entrega_nombre: rentalData.firma_entrega_nombre || '',
+        firma_entrega_cedula: rentalData.firma_entrega_cedula || '',
+        firma_recibe_base64: rentalData.firma_recibe_base64 || '',
+        firma_recibe_nombre: rentalData.firma_recibe_nombre || '',
+        firma_recibe_cedula: rentalData.firma_recibe_cedula || '',
+      }
+
+      await openRemisionPDF(rentalComplete, rentalData.remision_number, signatureData)
+    } catch (error: any) {
+      alert('Error al generar la remisión: ' + error.message)
+    }
+  }
+
+  const handleFirmaClienteConfirm = async (signatureData: SignatureData) => {
+    setShowFirmaClienteModal(false)
+    setFirmaLoading(true)
+
+    try {
+      const rental = selectedRentalForSignature
+      if (!rental) throw new Error('No se encontró el alquiler')
+
+      // 1. Actualizar rental a ACTIVO + guardar firma del cliente
+      const { error } = await supabase
+        .from('rentals')
+        .update({
+          status: 'ACTIVO',
+          firma_recibe_base64: signatureData.firma_recibe_base64,
+          firma_recibe_nombre: signatureData.firma_recibe_nombre,
+          firma_recibe_cedula: signatureData.firma_recibe_cedula,
+        })
+        .eq('id', rental.id)
+
+      if (error) throw error
+
+      // 2. Obtener todos los rental_items para el PDF
+      const PAGE_SIZE_ITEMS = 1000
+      let allRentalItems: any[] = []
+      let hasMoreItems = true
+      let offsetItems = 0
+
+      while (hasMoreItems) {
+        const { data: itemsBatch, error: itemsFetchError } = await supabase
+          .from('rental_items')
+          .select('*, canastilla:canastillas(*)')
+          .eq('rental_id', rental.id)
+          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
+        if (itemsFetchError) throw itemsFetchError
+        if (itemsBatch && itemsBatch.length > 0) {
+          allRentalItems = [...allRentalItems, ...itemsBatch]
+          offsetItems += PAGE_SIZE_ITEMS
+          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
+        } else {
+          hasMoreItems = false
+        }
+      }
+
+      const rentalComplete = { ...rental, rental_items: allRentalItems }
+
+      // 3. Combinar ambas firmas
+      const fullSignatureData: SignatureData = {
+        firma_entrega_base64: rental.firma_entrega_base64 || '',
+        firma_entrega_nombre: rental.firma_entrega_nombre || '',
+        firma_entrega_cedula: rental.firma_entrega_cedula || '',
+        firma_recibe_base64: signatureData.firma_recibe_base64,
+        firma_recibe_nombre: signatureData.firma_recibe_nombre,
+        firma_recibe_cedula: signatureData.firma_recibe_cedula,
+      }
+
+      // 4. Generar PDF con ambas firmas y subir a storage
+      try {
+        const pdfBlob = await getRemisionPDFBlob(rentalComplete, rental.remision_number, fullSignatureData)
+        const pdfUrl = await uploadSignedPDF(pdfBlob, 'rentals', `Remision_${rental.remision_number}.pdf`)
+        if (pdfUrl) {
+          await supabase.from('rentals').update({ signed_pdf_url: pdfUrl }).eq('id', rental.id)
+        }
+      } catch (pdfErr) {
+        console.error('Error al subir PDF firmado:', pdfErr)
+      }
+
+      // 5. Abrir PDF con ambas firmas
+      await openRemisionPDF(rentalComplete, rental.remision_number, fullSignatureData)
+
+      alert(`Alquiler activado exitosamente.\nRemisión: ${rental.remision_number}`)
+
+      setSelectedRentalForSignature(null)
+      refreshRentals()
+    } catch (error: any) {
+      alert('Error: ' + error.message)
+    } finally {
+      setFirmaLoading(false)
+    }
   }
 
   return (
@@ -102,15 +273,54 @@ export function AlquileresPage() {
           </div>
         </div>
 
-        {/* Header con botón crear */}
-        {activeTab === 'activos' && canCreateRental && (
-          <div className="flex justify-end">
-            <Button onClick={() => setShowCrearModal(true)}>
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Crear Alquiler
-            </Button>
+        {/* Header con filtro y botón crear */}
+        {(activeTab === 'activos' || activeTab === 'historial') && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Filtro por tipo */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 hidden sm:inline">Filtrar:</span>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                <button
+                  onClick={() => setFilterType('TODOS')}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    filterType === 'TODOS'
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setFilterType('INTERNO')}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-200 ${
+                    filterType === 'INTERNO'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Interno
+                </button>
+                <button
+                  onClick={() => setFilterType('EXTERNO')}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-200 ${
+                    filterType === 'EXTERNO'
+                      ? 'bg-pink-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Externo
+                </button>
+              </div>
+            </div>
+
+            {activeTab === 'activos' && canCreateRental && (
+              <Button onClick={() => setShowCrearModal(true)}>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Crear Alquiler
+              </Button>
+            )}
           </div>
         )}
 
@@ -121,13 +331,17 @@ export function AlquileresPage() {
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
               </div>
-            ) : activeRentals.length === 0 ? (
+            ) : filteredActiveRentals.length === 0 ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
                 <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                <p className="text-lg font-medium text-gray-900">No hay alquileres activos</p>
-                <p className="text-sm text-gray-500 mt-1">Los alquileres activos aparecerán aquí</p>
+                <p className="text-lg font-medium text-gray-900">
+                  {filterType !== 'TODOS' ? `No hay alquileres ${filterType === 'INTERNO' ? 'internos' : 'externos'} activos` : 'No hay alquileres activos'}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {filterType !== 'TODOS' ? 'Prueba cambiando el filtro' : 'Los alquileres activos aparecerán aquí'}
+                </p>
                 {canCreateRental && (
                   <Button className="mt-4" onClick={() => setShowCrearModal(true)}>
                     Crear Primer Alquiler
@@ -136,7 +350,7 @@ export function AlquileresPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {activeRentals.map((rental) => {
+                {filteredActiveRentals.map((rental) => {
                   const currentDays = calculateCurrentDays(rental.start_date)
                   const totalOriginal = (rental as any).items_count ?? rental.rental_items?.length ?? 0
 
@@ -174,8 +388,12 @@ export function AlquileresPage() {
                             <h3 className="text-lg font-semibold text-gray-900">
                               {rental.sale_point?.name}
                             </h3>
-                            <span className="px-3 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                              ACTIVO
+                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                              rental.status === 'PENDIENTE_FIRMA'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {rental.status === 'PENDIENTE_FIRMA' ? 'PENDIENTE FIRMA' : 'ACTIVO'}
                             </span>
                             <span className={`px-2 py-1 text-xs font-medium rounded ${
                               rental.rental_type === 'INTERNO'
@@ -264,25 +482,50 @@ export function AlquileresPage() {
                       )}
 
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-gray-200">
-                        <button
-                          onClick={() => {
-                            setSelectedRental(rental)
-                            setShowDetalleModal(true)
-                          }}
-                          className="text-sm text-primary-600 hover:text-primary-700 font-medium text-center sm:text-left"
-                        >
-                          Ver detalles
-                        </button>
-                        <Button
-                          size="sm"
-                          className="w-full sm:w-auto"
-                          onClick={() => {
-                            setSelectedRental(rental)
-                            setShowRetornoModal(true)
-                          }}
-                        >
-                          Procesar Retorno
-                        </Button>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => {
+                              setSelectedRental(rental)
+                              setShowDetalleModal(true)
+                            }}
+                            className="text-sm text-primary-600 hover:text-primary-700 font-medium text-center sm:text-left"
+                          >
+                            Ver detalles
+                          </button>
+                          <button
+                            onClick={() => handleVerRemision(rental)}
+                            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-800 font-medium"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Ver Remisión
+                          </button>
+                        </div>
+                        {rental.status === 'PENDIENTE_FIRMA' ? (
+                          <Button
+                            size="sm"
+                            className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700"
+                            onClick={() => handleFirmaCliente(rental)}
+                            loading={firmaLoading}
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Firma Cliente
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            onClick={() => {
+                              setSelectedRental(rental)
+                              setShowRetornoModal(true)
+                            }}
+                          >
+                            Procesar Retorno
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )
@@ -299,13 +542,17 @@ export function AlquileresPage() {
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
               </div>
-            ) : completedRentals.length === 0 ? (
+            ) : filteredCompletedRentals.length === 0 ? (
               <div className="p-12 text-center">
                 <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-lg font-medium text-gray-900">No hay historial</p>
-                <p className="text-sm text-gray-500 mt-1">Los alquileres completados aparecerán aquí</p>
+                <p className="text-lg font-medium text-gray-900">
+                  {filterType !== 'TODOS' ? `No hay historial de alquileres ${filterType === 'INTERNO' ? 'internos' : 'externos'}` : 'No hay historial'}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {filterType !== 'TODOS' ? 'Prueba cambiando el filtro' : 'Los alquileres completados aparecerán aquí'}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -336,7 +583,7 @@ export function AlquileresPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {completedRentals.map((rental) => (
+                    {filteredCompletedRentals.map((rental) => (
                       <tr key={rental.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <p className="text-sm font-medium text-gray-900">{rental.invoice_number || 'N/A'}</p>
@@ -618,6 +865,27 @@ export function AlquileresPage() {
           setSelectedRental(null)
         }}
         rental={selectedRental}
+      />
+
+      {/* Modal de Firma Digital - Cliente firma para activar alquiler */}
+      <FirmaDigitalModal
+        isOpen={showFirmaClienteModal}
+        onClose={() => {
+          setShowFirmaClienteModal(false)
+          setSelectedRentalForSignature(null)
+        }}
+        onConfirm={handleFirmaClienteConfirm}
+        loading={firmaLoading}
+        title="Firma del Cliente"
+        entregaLabel="ENTREGA"
+        recibeLabel="CLIENTE"
+        mode="recibe-only"
+        prefillEntrega={selectedRentalForSignature ? {
+          nombre: selectedRentalForSignature.firma_entrega_nombre || '',
+          cedula: selectedRentalForSignature.firma_entrega_cedula || '',
+          firma_base64: selectedRentalForSignature.firma_entrega_base64 || '',
+        } : undefined}
+        confirmButtonText="Firmar y Activar Alquiler"
       />
     </DashboardLayout>
   )

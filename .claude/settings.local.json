@@ -3,7 +3,9 @@
     "allow": [
       "Bash(cd:*)",
       "Bash(npm run build:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

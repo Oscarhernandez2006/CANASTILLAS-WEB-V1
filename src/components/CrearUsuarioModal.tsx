@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'
 import { createUser } from '@/services/userService'
+import { onlyLetters, onlyNumbers } from '@/utils/helpers'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
 
 interface CrearUsuarioModalProps {
@@ -167,7 +168,7 @@ export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioMo
                 <input
                   type="text"
                   value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, full_name: onlyLetters(e.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Juan Pérez"
                   required
@@ -231,9 +232,9 @@ export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioMo
                 <input
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, phone: onlyNumbers(e.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="+57 300 123 4567"
+                  placeholder="3001234567"
                 />
               </div>
 

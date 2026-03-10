@@ -138,57 +138,71 @@ export function useDashboardStats() {
       }
 
       // Obtener ubicaciones reales de la base de datos
-      // Consultar todas las canastillas con su ubicación para agrupar
-      let locationQuery = supabase
-        .from('canastillas')
-        .select('current_location, status')
+      // Consultar TODAS las canastillas con paginación (Supabase limita a 1000 por consulta)
+      const PAGE_SIZE = 1000
+      let allCanastillasData: { current_location: string | null; status: string }[] = []
+      let hasMore = true
+      let offset = 0
 
-      if (!isSuperAdmin) {
-        locationQuery = locationQuery.eq('current_owner_id', user.id)
+      while (hasMore) {
+        let locationQuery = supabase
+          .from('canastillas')
+          .select('current_location, status')
+
+        if (!isSuperAdmin) {
+          locationQuery = locationQuery.eq('current_owner_id', user.id)
+        }
+
+        const { data: batch } = await locationQuery
+          .range(offset, offset + PAGE_SIZE - 1)
+
+        if (batch && batch.length > 0) {
+          allCanastillasData = [...allCanastillasData, ...batch]
+          offset += PAGE_SIZE
+          hasMore = batch.length === PAGE_SIZE
+        } else {
+          hasMore = false
+        }
       }
-
-      const { data: canastillasData } = await locationQuery
 
       // Agrupar por ubicación
       const locationMap: Record<string, LocationData> = {}
 
-      if (canastillasData) {
-        canastillasData.forEach((c) => {
-          const locationName = c.current_location || 'Sin ubicación'
+      allCanastillasData.forEach((c) => {
+        const locationName = c.current_location || 'Sin ubicación'
 
-          if (!locationMap[locationName]) {
-            locationMap[locationName] = {
-              name: locationName,
-              total: 0,
-              disponibles: 0,
-              enAlquiler: 0,
-              enUsoInterno: 0,
-              enLavado: 0,
-              enReparacion: 0,
-            }
+        if (!locationMap[locationName]) {
+          locationMap[locationName] = {
+            name: locationName,
+            total: 0,
+            disponibles: 0,
+            enAlquiler: 0,
+            enUsoInterno: 0,
+            enLavado: 0,
+            enReparacion: 0,
           }
+        }
 
-          locationMap[locationName].total++
+        locationMap[locationName].total++
 
-          switch (c.status) {
-            case 'DISPONIBLE':
-              locationMap[locationName].disponibles++
-              break
-            case 'EN_ALQUILER':
-              locationMap[locationName].enAlquiler++
-              break
-            case 'EN_USO_INTERNO':
-              locationMap[locationName].enUsoInterno++
-              break
-            case 'EN_LAVADO':
-              locationMap[locationName].enLavado++
-              break
-            case 'EN_REPARACION':
-              locationMap[locationName].enReparacion++
-              break
-          }
-        })
-      }
+        switch (c.status) {
+          case 'DISPONIBLE':
+            locationMap[locationName].disponibles++
+            break
+          case 'EN_ALQUILER':
+            locationMap[locationName].enAlquiler++
+            break
+          case 'EN_USO_INTERNO':
+            locationMap[locationName].enUsoInterno++
+            break
+          case 'EN_LAVADO':
+            locationMap[locationName].enLavado++
+            break
+          case 'EN_REPARACION':
+            locationMap[locationName].enReparacion++
+            break
+        }
+      })
 
       // Convertir a array y ordenar por total (mayor a menor), tomando solo las 5 primeras
       const locations = Object.values(locationMap)

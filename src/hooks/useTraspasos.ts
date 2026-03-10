@@ -10,6 +10,14 @@ interface Transfer {
   requested_at: string
   responded_at?: string
   remision_number?: string
+  is_washing_transfer?: boolean
+  is_external_transfer?: boolean
+  external_recipient_name?: string
+  external_recipient_cedula?: string
+  external_recipient_phone?: string
+  external_recipient_empresa?: string
+  returned_items_count?: number
+  pending_items_count?: number
   from_user?: {
     first_name: string
     last_name: string

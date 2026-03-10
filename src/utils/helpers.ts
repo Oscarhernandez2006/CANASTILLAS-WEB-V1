@@ -70,6 +70,16 @@ export function getRoleLabel(role: string): string {
   return labels[role] || role
 }
 
+// Sanitizar input: solo letras, espacios y acentos (para nombres)
+export function onlyLetters(value: string): string {
+  return value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '')
+}
+
+// Sanitizar input: solo números (para teléfonos, cédulas, NIT)
+export function onlyNumbers(value: string): string {
+  return value.replace(/[^0-9]/g, '')
+}
+
 // Color de badge según estado
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {

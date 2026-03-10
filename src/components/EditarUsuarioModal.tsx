@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'
 import { updateUser } from '@/services/userService'
+import { onlyLetters, onlyNumbers } from '@/utils/helpers'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
 
 interface User {
@@ -183,7 +184,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
                   <input
                     type="text"
                     value={formData.first_name}
-                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, first_name: onlyLetters(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Nombre"
                     required
@@ -197,7 +198,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
                   <input
                     type="text"
                     value={formData.last_name}
-                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, last_name: onlyLetters(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Apellido"
                   />
@@ -211,9 +212,9 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
                 <input
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, phone: onlyNumbers(e.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="+57 300 123 4567"
+                  placeholder="3001234567"
                 />
               </div>
 

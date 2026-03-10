@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { createSalePoint, updateSalePoint } from '@/services/salePointService'
+import { onlyLetters, onlyNumbers } from '@/utils/helpers'
 import type { SalePoint } from '@/types'
 
 interface CrearClienteModalProps {
@@ -212,7 +213,7 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
                   <input
                     type="text"
                     value={formData.contact_name}
-                    onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, contact_name: onlyLetters(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Ej: María López"
                     required
@@ -226,9 +227,9 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
                   <input
                     type="tel"
                     value={formData.contact_phone}
-                    onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, contact_phone: onlyNumbers(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="300 123 4567"
+                    placeholder="3001234567"
                     required
                   />
                 </div>
@@ -254,9 +255,9 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
                 <input
                   type="text"
                   value={formData.identification}
-                  onChange={(e) => setFormData({ ...formData, identification: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, identification: onlyNumbers(e.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="123456789-0"
+                  placeholder="1234567890"
                 />
               </div>
 
@@ -282,7 +283,7 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
                   <input
                     type="text"
                     value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, city: onlyLetters(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Barranquilla"
                     required
@@ -296,7 +297,7 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
                   <input
                     type="text"
                     value={formData.region}
-                    onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, region: onlyLetters(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Atlántico"
                     required

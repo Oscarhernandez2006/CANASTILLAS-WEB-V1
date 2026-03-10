@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
-import { CanastillaLoteSelector } from './CanastillaLoteSelector'
+import { FirmaDigitalModal } from './FirmaDigitalModal'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSalePoints } from '@/hooks/useSalePoints'
 import { useRentalSettings } from '@/hooks/useRentalSettings'
-import type { Canastilla } from '@/types'
+import type { Canastilla, SignatureData } from '@/types'
 import { formatCurrency } from '@/utils/helpers'
+import { openRemisionPDF } from '@/utils/remisionGenerator'
 
-interface LoteItem {
-  id: string
+interface LoteGroup {
+  key: string
   size: string
   color: string
-  ubicacion: string
-  cantidad: number
-  canastillaIds: string[]
+  shape: string
+  tipo_propiedad: string
+  totalDisponible: number
+  cantidadAlquilar: number
+  canastillas: Canastilla[]
 }
 
 interface CrearAlquilerModalProps {
@@ -27,15 +30,15 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [step, setStep] = useState<1 | 2>(1)
+  const [showFirmaModal, setShowFirmaModal] = useState(false)
   
   const { user } = useAuthStore()
   const { salePoints, loading: loadingSalePoints } = useSalePoints()
   const { settings } = useRentalSettings()
   
-  const [canastillasDisponibles, setCanastillasDisponibles] = useState<Canastilla[]>([])
-  const [selectedCanastillas, setSelectedCanastillas] = useState<Set<string>>(new Set())
-  const [lotes, setLotes] = useState<LoteItem[]>([])
-  
+  const [lotes, setLotes] = useState<LoteGroup[]>([])
+  const [loadingLotes, setLoadingLotes] = useState(false)
+
   const [formData, setFormData] = useState({
     sale_point_id: '',
     rental_type: 'EXTERNO' as 'INTERNO' | 'EXTERNO',
@@ -44,15 +47,18 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
 
   useEffect(() => {
     if (isOpen && step === 2) {
-      fetchCanastillasDisponibles()
+      fetchCanastillasYAgrupar()
     }
   }, [isOpen, step])
 
-  const fetchCanastillasDisponibles = async () => {
-    try {
-      if (!user) return
+  const fetchCanastillasYAgrupar = async () => {
+    if (!user) return
 
-      // Cargar TODAS las canastillas disponibles usando paginación interna
+    setLoadingLotes(true)
+    setError('')
+
+    try {
+      // Cargar TODAS las canastillas disponibles usando paginación
       const PAGE_SIZE = 1000
       let allCanastillas: Canastilla[] = []
       let hasMore = true
@@ -64,7 +70,7 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
           .select('*')
           .eq('current_owner_id', user.id)
           .eq('status', 'DISPONIBLE')
-          .order('codigo')
+          .order('color', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
         if (error) throw error
@@ -78,13 +84,37 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         }
       }
 
-      setCanastillasDisponibles(allCanastillas)
-    } catch (error) {
-      console.error('Error fetching canastillas:', error)
-      setCanastillasDisponibles([])
+      // Agrupar por size + color + shape + tipo_propiedad
+      const grouped: Record<string, LoteGroup> = {}
+
+      for (const canastilla of allCanastillas) {
+        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.tipo_propiedad || 'PROPIA'}`
+
+        if (!grouped[key]) {
+          grouped[key] = {
+            key,
+            size: canastilla.size,
+            color: canastilla.color,
+            shape: canastilla.shape || '',
+            tipo_propiedad: canastilla.tipo_propiedad || 'PROPIA',
+            totalDisponible: 0,
+            cantidadAlquilar: 0,
+            canastillas: []
+          }
+        }
+
+        grouped[key].totalDisponible++
+        grouped[key].canastillas.push(canastilla)
+      }
+
+      setLotes(Object.values(grouped))
+    } catch (err: any) {
+      console.error('Error fetching canastillas:', err)
+      setError('Error al cargar las canastillas: ' + err.message)
+    } finally {
+      setLoadingLotes(false)
     }
   }
-
 
   const handleNextStep = () => {
     if (!formData.sale_point_id) {
@@ -95,38 +125,77 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
     setStep(2)
   }
 
-  const handleLotesChange = (nuevosLotes: LoteItem[]) => {
-    setLotes(nuevosLotes)
-    // Actualizar el Set de IDs seleccionados con todos los IDs de los lotes
-    const allIds = nuevosLotes.flatMap(lote => lote.canastillaIds)
-    setSelectedCanastillas(new Set(allIds))
+  const handleCantidadChange = (key: string, cantidad: number) => {
+    setLotes(prev =>
+      prev.map(lote =>
+        lote.key === key
+          ? { ...lote, cantidadAlquilar: Math.min(Math.max(0, cantidad), lote.totalDisponible) }
+          : lote
+      )
+    )
   }
 
-  const handleSubmit = async () => {
-    if (selectedCanastillas.size === 0) {
+  const handleAlquilarTodo = (key: string) => {
+    setLotes(prev =>
+      prev.map(lote =>
+        lote.key === key
+          ? { ...lote, cantidadAlquilar: lote.totalDisponible }
+          : lote
+      )
+    )
+  }
+
+  const handleAlquilarTodoGlobal = () => {
+    setLotes(prev =>
+      prev.map(lote => ({ ...lote, cantidadAlquilar: lote.totalDisponible }))
+    )
+  }
+
+  const handleLimpiarTodo = () => {
+    setLotes(prev =>
+      prev.map(lote => ({ ...lote, cantidadAlquilar: 0 }))
+    )
+  }
+
+  // Calcular totales
+  const totalCanastillasAlquilar = lotes.reduce((sum, lote) => sum + lote.cantidadAlquilar, 0)
+  const totalCanastillasDisponibles = lotes.reduce((sum, lote) => sum + lote.totalDisponible, 0)
+
+  const handlePreSubmit = () => {
+    if (totalCanastillasAlquilar === 0) {
       setError('Selecciona al menos una canastilla')
       return
     }
+    setError('')
+    setShowFirmaModal(true)
+  }
 
+  const handleFirmaConfirm = async (signatureData: SignatureData) => {
+    setShowFirmaModal(false)
     setLoading(true)
     setError('')
 
     try {
       if (!user) throw new Error('Usuario no autenticado')
 
-      const canastillaIds = Array.from(selectedCanastillas)
-      // Tarifa según tipo: INTERNO = tarifa fija, EXTERNO = tarifa por día
+      // Recopilar los IDs de las canastillas seleccionadas de cada lote
+      const canastillaIds: string[] = []
+      for (const lote of lotes) {
+        if (lote.cantidadAlquilar > 0) {
+          const seleccionadas = lote.canastillas.slice(0, lote.cantidadAlquilar)
+          canastillaIds.push(...seleccionadas.map(c => c.id))
+        }
+      }
       const dailyRate = formData.rental_type === 'INTERNO'
         ? (settings?.internal_rate || 1)
         : (settings?.daily_rate || 2)
 
       // 1. Generar número de remisión
       const { data: remisionData, error: remisionError } = await supabase.rpc('generate_remision_number')
-      
       if (remisionError) throw remisionError
       const remisionNumber = remisionData
 
-      // 2. Calcular días estimados si hay fecha de retorno
+      // 2. Calcular días estimados
       let estimatedDays = 0
       if (formData.estimated_return_date) {
         const start = new Date(new Date().toDateString())
@@ -134,13 +203,13 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         estimatedDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
       }
 
-      // 3. Crear el alquiler con número de remisión e inicializar contadores
+      // 3. Crear el alquiler con firma de entrega (pendiente firma del cliente)
       const { data: rental, error: rentalError } = await supabase
         .from('rentals')
         .insert([{
           sale_point_id: formData.sale_point_id,
           rental_type: formData.rental_type,
-          status: 'ACTIVO',
+          status: 'PENDIENTE_FIRMA',
           start_date: new Date().toISOString(),
           estimated_return_date: formData.estimated_return_date || null,
           estimated_days: estimatedDays,
@@ -148,17 +217,19 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
           created_by: user.id,
           remision_number: remisionNumber,
           remision_generated_at: new Date().toISOString(),
-          // Inicializar contadores para devoluciones parciales
           pending_items_count: canastillaIds.length,
           returned_items_count: 0,
           total_invoiced: 0,
+          firma_entrega_base64: signatureData.firma_entrega_base64,
+          firma_entrega_nombre: signatureData.firma_entrega_nombre,
+          firma_entrega_cedula: signatureData.firma_entrega_cedula,
         }])
         .select()
         .single()
 
       if (rentalError) throw rentalError
 
-      // 4. Insertar las canastillas del alquiler (en lotes de 500)
+      // 4. Insertar las canastillas (en lotes de 500)
       const rentalItems = canastillaIds.map(canastillaId => ({
         rental_id: rental.id,
         canastilla_id: canastillaId
@@ -170,34 +241,20 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         const { error: itemsError } = await supabase
           .from('rental_items')
           .insert(batch)
-
         if (itemsError) throw itemsError
       }
 
-      // 5. Actualizar estado de las canastillas (en lotes de 500)
+      // 5. Actualizar estado de canastillas
       for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
         const batch = canastillaIds.slice(i, i + BATCH_SIZE)
         const { error: updateError } = await supabase
           .from('canastillas')
           .update({ status: 'EN_ALQUILER' })
           .in('id', batch)
-
         if (updateError) throw updateError
       }
 
-      // 6. Obtener el alquiler base sin items (para evitar límite de 1000)
-      const { data: rentalBase, error: fetchError } = await supabase
-        .from('rentals')
-        .select(`
-          *,
-          sale_point:sale_points(*)
-        `)
-        .eq('id', rental.id)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      // Obtener TODOS los rental_items con paginación
+      // 6. Obtener rental_items con canastillas para el PDF
       const PAGE_SIZE_ITEMS = 1000
       let allRentalItems: any[] = []
       let hasMoreItems = true
@@ -209,9 +266,7 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
           .select('*, canastilla:canastillas(*)')
           .eq('rental_id', rental.id)
           .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
-
         if (itemsFetchError) throw itemsFetchError
-
         if (itemsBatch && itemsBatch.length > 0) {
           allRentalItems = [...allRentalItems, ...itemsBatch]
           offsetItems += PAGE_SIZE_ITEMS
@@ -221,18 +276,20 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         }
       }
 
-      // Combinar rental con todos sus items
-      const rentalComplete = {
-        ...rentalBase,
-        rental_items: allRentalItems
+      // 7. Abrir PDF de remisión con firma de entrega
+      const rentalForPDF = {
+        ...rental,
+        sale_point: salePoints.find(sp => sp.id === formData.sale_point_id),
+        rental_items: allRentalItems,
       }
 
-      // 7. Generar y abrir PDF de remisión automáticamente
-      const { openRemisionPDF } = await import('@/utils/remisionGenerator')
-      await openRemisionPDF(rentalComplete, remisionNumber)
+      try {
+        await openRemisionPDF(rentalForPDF, remisionNumber, signatureData)
+      } catch (pdfErr) {
+        console.error('Error al generar PDF:', pdfErr)
+      }
 
-      alert(`✅ Alquiler creado exitosamente\n📄 Remisión: ${remisionNumber}\n\nEl documento de remisión se ha generado automáticamente.`)
-      
+      alert(`Alquiler creado. Pendiente firma del cliente.\nRemisión: ${remisionNumber}`)
       onSuccess()
       handleClose()
     } catch (err: any) {
@@ -246,7 +303,6 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const handleClose = () => {
     setStep(1)
     setFormData({ sale_point_id: '', rental_type: 'EXTERNO', estimated_return_date: '' })
-    setSelectedCanastillas(new Set())
     setLotes([])
     setError('')
     onClose()
@@ -263,8 +319,8 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   }
 
   const totalEstimado = formData.rental_type === 'INTERNO'
-    ? selectedCanastillas.size * (settings?.internal_rate || 1)  // INTERNO: tarifa fija por canastilla
-    : (selectedCanastillas.size * (settings?.daily_rate || 2)) * getDaysCount()  // EXTERNO: (canastillas × precio) × días
+    ? totalCanastillasAlquilar * (settings?.internal_rate || 1)  // INTERNO: tarifa fija por canastilla
+    : (totalCanastillasAlquilar * (settings?.daily_rate || 2)) * getDaysCount()  // EXTERNO: (canastillas × precio) × días
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -397,22 +453,129 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
               </div>
             )}
 
-            {/* PASO 2: Seleccionar Canastillas */}
+            {/* PASO 2: Seleccionar Canastillas por Lote */}
             {step === 2 && (
               <div className="space-y-6">
-                {/* Selector de lotes */}
-                <CanastillaLoteSelector
-                  canastillasDisponibles={canastillasDisponibles}
-                  onLotesChange={handleLotesChange}
-                  selectedIds={selectedCanastillas}
-                />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-gray-700">
+                      Canastillas a Alquilar por Lote
+                    </h4>
+                    {!loadingLotes && lotes.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleAlquilarTodoGlobal}
+                          className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+                        >
+                          Seleccionar todas
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={handleLimpiarTodo}
+                          className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
-                {/* Resumen total */}
-                {selectedCanastillas.size > 0 && (
-                  <div className="flex items-center justify-between p-4 bg-primary-50 rounded-lg">
+                  {loadingLotes ? (
+                    <div className="flex items-center justify-center h-32 border border-gray-200 rounded-lg">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                        <p className="text-sm text-gray-500 mt-2">Cargando canastillas...</p>
+                      </div>
+                    </div>
+                  ) : lotes.length === 0 ? (
+                    <div className="flex items-center justify-center h-32 border border-gray-200 rounded-lg bg-gray-50">
+                      <p className="text-sm text-gray-500">No tienes canastillas disponibles para alquilar</p>
+                    </div>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Header de la tabla */}
+                      <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-100 text-xs font-medium text-gray-600 uppercase">
+                        <div className="col-span-5">Lote</div>
+                        <div className="col-span-2 text-center">Disponibles</div>
+                        <div className="col-span-3 text-center">Alquilar</div>
+                        <div className="col-span-2 text-center">Acción</div>
+                      </div>
+
+                      {/* Filas de lotes */}
+                      <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                        {lotes.map((lote) => (
+                          <div key={lote.key} className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-gray-50">
+                            <div className="col-span-5 flex items-center gap-2">
+                              <div
+                                className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
+                                style={{ backgroundColor: lote.color.toLowerCase().replace(/ /g, '') }}
+                              />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {lote.size} · {lote.color}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {lote.shape || 'Sin forma'} ·{' '}
+                                  <span className={lote.tipo_propiedad === 'PROPIA' ? 'text-green-700' : 'text-amber-700'}>
+                                    {lote.tipo_propiedad === 'PROPIA' ? 'Propia' : 'Alquilada'}
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="col-span-2 text-center">
+                              <span className="text-sm font-semibold text-gray-700">
+                                {lote.totalDisponible}
+                              </span>
+                            </div>
+                            <div className="col-span-3">
+                              <input
+                                type="number"
+                                min="0"
+                                max={lote.totalDisponible}
+                                value={lote.cantidadAlquilar || ''}
+                                onChange={(e) => handleCantidadChange(lote.key, e.target.value === '' ? 0 : parseInt(e.target.value))}
+                                placeholder="0"
+                                className="w-full px-3 py-1.5 text-center border border-gray-300 rounded-lg text-sm focus:ring-primary-500 focus:border-primary-500"
+                              />
+                            </div>
+                            <div className="col-span-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleAlquilarTodo(lote.key)}
+                                className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+                              >
+                                Todo
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Resumen */}
+                      <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 border-t border-gray-200">
+                        <div className="col-span-5 text-sm font-semibold text-gray-900">
+                          TOTAL
+                        </div>
+                        <div className="col-span-2 text-center text-sm font-semibold text-gray-700">
+                          {totalCanastillasDisponibles}
+                        </div>
+                        <div className="col-span-3 text-center text-sm font-bold text-primary-600">
+                          {totalCanastillasAlquilar}
+                        </div>
+                        <div className="col-span-2"></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Resumen con total estimado */}
+                {totalCanastillasAlquilar > 0 && (
+                  <div className="flex items-center justify-between p-4 bg-primary-50 border border-primary-200 rounded-lg">
                     <div>
-                      <p className="text-sm text-gray-600">
-                        Total seleccionado: <strong>{selectedCanastillas.size}</strong> canastilla{selectedCanastillas.size !== 1 ? 's' : ''}
+                      <p className="text-sm font-medium text-primary-800">
+                        Se alquilarán <strong>{totalCanastillasAlquilar}</strong> canastilla{totalCanastillasAlquilar !== 1 ? 's' : ''}
                       </p>
                     </div>
                     {formData.estimated_return_date && (
@@ -458,18 +621,30 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
                 </Button>
               ) : (
                 <Button
-                  onClick={handleSubmit}
+                  onClick={handlePreSubmit}
                   loading={loading}
-                  disabled={loading || selectedCanastillas.size === 0}
+                  disabled={loading || loadingLotes || totalCanastillasAlquilar === 0}
                   className="w-full sm:w-auto text-sm order-1 sm:order-2"
                 >
-                  {loading ? 'Creando...' : 'Crear Alquiler'}
+                  {loading ? 'Creando...' : `Crear Alquiler (${totalCanastillasAlquilar})`}
                 </Button>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Modal de Firma Digital - Solo entrega (empleado) */}
+      <FirmaDigitalModal
+        isOpen={showFirmaModal}
+        onClose={() => setShowFirmaModal(false)}
+        onConfirm={handleFirmaConfirm}
+        loading={loading}
+        title="Firma de Entrega"
+        entregaLabel="ENTREGA"
+        mode="entrega-only"
+        confirmButtonText="Firmar y Crear Alquiler"
+      />
     </div>
   )
 }

@@ -39,7 +39,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
           location.pathname === '/dashboard'
             ? 'bg-primary-600 text-white'
-            : 'text-gray-700 hover:bg-gray-100'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,7 +55,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/inventario'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,7 +72,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/canastillas'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/traspasos'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +106,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/alquileres'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +123,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/reportes'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,7 +140,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/clientes'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,7 +157,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/usuarios'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,7 +174,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
             location.pathname === '/permisos'
               ? 'bg-primary-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,11 +183,28 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <span className="font-medium">Permisos</span>
         </Link>
       )}
+
+      {user?.role === 'super_admin' && (
+        <Link
+          to="/trazabilidad"
+          onClick={handleLinkClick}
+          className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
+            location.pathname === '/trazabilidad'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <span className="font-medium">Trazabilidad</span>
+        </Link>
+      )}
     </>
   )
 
   const UserInfo = () => (
-    <div className="p-4 border-t border-gray-200">
+    <div className="p-4 border-t border-gray-200 dark:border-gray-700">
       <div className="flex items-center space-x-3">
         <div className="flex-shrink-0">
           <div className="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center">
@@ -195,8 +212,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{getDisplayName()}</p>
-          <p className="text-xs text-gray-500 truncate capitalize">
+          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{getDisplayName()}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize">
             {user?.role?.replace('_', ' ')}
           </p>
         </div>
@@ -220,13 +237,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Mobile sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white transform transition-transform duration-300 ease-in-out lg:hidden touch-pan-y ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 transform transition-transform duration-300 ease-in-out lg:hidden touch-pan-y ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
+          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-2">
               <img src="/logo.png" alt="Santacruz" className="h-8" />
               <span className="text-lg font-bold text-primary-600">SANTACRUZ</span>
@@ -238,7 +255,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 e.preventDefault()
                 onClose()
               }}
-              className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 touch-manipulation"
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 touch-manipulation"
               aria-label="Cerrar menú"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -255,9 +272,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-shrink-0">
-        <div className="flex flex-col w-64 bg-white border-r border-gray-200">
-          <div className="flex flex-col items-center justify-center h-20 px-6 border-b border-gray-200">
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+        <div className="flex flex-col w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col items-center justify-center h-20 px-6 border-b border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
               Grupo Empresarial
             </p>
             <div className="flex items-center space-x-2">

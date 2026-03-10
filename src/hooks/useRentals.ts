@@ -55,7 +55,7 @@ export function useRentals() {
             )
           )
         `)
-        .eq('status', 'ACTIVO')
+        .in('status', ['ACTIVO', 'PENDIENTE_FIRMA'])
         .eq('created_by', user.id)
         .order('start_date', { ascending: false })
 

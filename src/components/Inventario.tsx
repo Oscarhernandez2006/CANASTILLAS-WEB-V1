@@ -151,12 +151,13 @@ export function Inventario() {
         bajas = bajasData || []
       }
 
-      // 6. Agrupar por: color + tamaño + forma + condición + tipo_propiedad
+      // 6. Agrupar por: estado + color + tamaño + forma + condición + tipo_propiedad
+      //    Se incluyen TODAS las canastillas (no solo las disponibles)
       const lotesMap = new Map<string, LoteItem>()
 
-      // PRIMERO: Procesar canastillas disponibles (no retenidas)
-      canastillasParaLotes.forEach((c) => {
-        const key = `${c.color}|${c.size}|${c.shape || 'SIN_FORMA'}|${c.condition || 'SIN_CONDICION'}|${c.tipo_propiedad}`
+      // PRIMERO: Procesar TODAS las canastillas con su estado real
+      todasLasCanastillas.forEach((c) => {
+        const key = `${c.status}|${c.color}|${c.size}|${c.shape || 'SIN_FORMA'}|${c.condition || 'SIN_CONDICION'}|${c.tipo_propiedad}`
 
         if (!lotesMap.has(key)) {
           lotesMap.set(key, {
@@ -166,7 +167,7 @@ export function Inventario() {
             shape: c.shape || undefined,
             condition: c.condition || undefined,
             tipoPropiedad: c.tipo_propiedad,
-            estado: 'DISPONIBLE',
+            estado: c.status,
             cantidad: 0,
             canastillas: [],
           })
@@ -202,8 +203,17 @@ export function Inventario() {
       })
 
       // Convertir a array y ordenar
+      const estadoOrden: Record<string, number> = {
+        'DISPONIBLE': 0, 'EN_ALQUILER': 1, 'EN_LAVADO': 2,
+        'EN_USO_INTERNO': 3, 'EN_REPARACION': 4,
+        'FUERA_SERVICIO': 5, 'EXTRAVIADA': 6, 'DADA_DE_BAJA': 7,
+      }
       let lotesArray: LoteItem[] = Array.from(lotesMap.values()).sort((a, b) => {
-        // Primero ordenar por tipo de propiedad
+        // Primero por estado
+        const eA = estadoOrden[a.estado] ?? 99
+        const eB = estadoOrden[b.estado] ?? 99
+        if (eA !== eB) return eA - eB
+        // Luego por tipo de propiedad
         if (a.tipoPropiedad !== b.tipoPropiedad) {
           return a.tipoPropiedad === 'PROPIA' ? -1 : 1
         }
@@ -300,7 +310,7 @@ export function Inventario() {
       )}
 
       {/* Stats Cards */}
-      <div className={`grid grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-4`}>
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${isSuperAdmin ? 'xl:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-4`}>
         <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
           <div>
             <p className="text-gray-600 text-xs sm:text-sm font-medium">Total</p>
@@ -330,7 +340,7 @@ export function Inventario() {
           </div>
         </div>
         {isSuperAdmin && (
-          <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-gray-300 border-gray-500 shadow-sm hover:shadow-md transition-shadow col-span-2 lg:col-span-1">
+          <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-gray-300 border-gray-500 shadow-sm hover:shadow-md transition-shadow col-span-2 xl:col-span-1">
             <div>
               <p className="text-gray-700 text-xs sm:text-sm font-medium">Destrucción</p>
               <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mt-1 sm:mt-2">{enDestruccion}</p>
@@ -342,7 +352,7 @@ export function Inventario() {
       {/* Tabla de Lotes */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Lotes Disponibles</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Canastillas por Lote</h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
             {lotes.length} lotes ({totalEnLotes} canastillas)
           </p>
@@ -352,6 +362,7 @@ export function Inventario() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Estado</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Tipo</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Color</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Tamaño</th>
@@ -363,7 +374,12 @@ export function Inventario() {
             <tbody className="divide-y divide-gray-200">
               {lotesPaginados.length > 0 ? (
                 lotesPaginados.map((lote) => (
-                  <tr key={lote.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={lote.id} className={`transition-colors hover:opacity-90 ${getEstadoColor(lote.estado)}`}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-xs font-medium text-gray-800">
+                        {getEstadoLabel(lote.estado)}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getTipoColor(lote.tipoPropiedad)}`}>
                         {getTipoLabel(lote.tipoPropiedad)}
@@ -390,7 +406,7 @@ export function Inventario() {
                       <span className="text-sm text-gray-700">{lote.condition || '-'}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-800">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-white bg-opacity-70 text-gray-800">
                         {lote.cantidad}
                       </span>
                     </td>
@@ -398,7 +414,7 @@ export function Inventario() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     <div className="flex flex-col items-center">
                       <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />

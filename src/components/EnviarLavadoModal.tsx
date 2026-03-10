@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { CanastillaLoteSelector } from './CanastillaLoteSelector'
+import { FirmaDigitalModal } from './FirmaDigitalModal'
+import { SearchableUserSelect } from './SearchableUserSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { createWashingOrder, getWashingStaff, getAvailableCanastillasForWashing } from '@/services/washingService'
-import type { User, Canastilla } from '@/types'
+import type { User, Canastilla, SignatureData } from '@/types'
 
 interface LoteItem {
   id: string
@@ -30,6 +32,7 @@ export function EnviarLavadoModal({
   const [error, setError] = useState('')
   const [washingStaff, setWashingStaff] = useState<User[]>([])
   const [loadingStaff, setLoadingStaff] = useState(false)
+  const [showFirmaModal, setShowFirmaModal] = useState(false)
   const { user: currentUser } = useAuthStore()
 
   const [canastillasDisponibles, setCanastillasDisponibles] = useState<Canastilla[]>([])
@@ -156,15 +159,24 @@ export function EnviarLavadoModal({
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
+
+    if (!currentUser) { setError('Usuario no autenticado'); return }
+    if (!formData.washing_staff_id) { setError('Selecciona un personal de lavado'); return }
+    if (selectedCanastillas.size === 0) { setError('Selecciona al menos una canastilla'); return }
+
+    setShowFirmaModal(true)
+  }
+
+  const handleFirmaConfirm = async (signatureData: SignatureData) => {
+    setShowFirmaModal(false)
     setError('')
     setLoading(true)
 
     try {
       if (!currentUser) throw new Error('Usuario no autenticado')
-      if (!formData.washing_staff_id) throw new Error('Selecciona un personal de lavado')
-      if (selectedCanastillas.size === 0) throw new Error('Selecciona al menos una canastilla')
 
       const canastillaIds = Array.from(selectedCanastillas)
 
@@ -175,6 +187,16 @@ export function EnviarLavadoModal({
         canastillaIds,
         formData.notes || undefined
       )
+
+      // Guardar firma del remitente en la orden de lavado
+      await supabase
+        .from('washing_orders')
+        .update({
+          firma_entrega_base64: signatureData.firma_entrega_base64,
+          firma_entrega_nombre: signatureData.firma_entrega_nombre,
+          firma_entrega_cedula: signatureData.firma_entrega_cedula,
+        })
+        .eq('id', order.id)
 
       // Crear notificación para el personal de lavado
       await supabase
@@ -222,7 +244,7 @@ export function EnviarLavadoModal({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handlePreSubmit}>
             <div className="bg-blue-600 px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -297,19 +319,13 @@ export function EnviarLavadoModal({
                   </div>
                 ) : (
                   <>
-                    <select
+                    <SearchableUserSelect
+                      users={washingStaff}
                       value={formData.washing_staff_id}
-                      onChange={(e) => setFormData({ ...formData, washing_staff_id: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(userId) => setFormData({ ...formData, washing_staff_id: userId })}
+                      placeholder="Buscar personal de lavado..."
                       required
-                    >
-                      <option value="">Seleccionar personal...</option>
-                      {washingStaff.map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.first_name} {staff.last_name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     {washingStaff.length === 0 && (
                       <p className="mt-2 text-sm text-red-600">
                         No hay personal de lavado disponible
@@ -354,6 +370,18 @@ export function EnviarLavadoModal({
           </form>
         </div>
       </div>
+
+      {/* Modal de Firma Digital - Entrega only */}
+      <FirmaDigitalModal
+        isOpen={showFirmaModal}
+        onClose={() => setShowFirmaModal(false)}
+        onConfirm={handleFirmaConfirm}
+        loading={loading}
+        title="Firma de Entrega a Lavado"
+        entregaLabel="ENTREGA"
+        mode="entrega-only"
+        confirmButtonText="Firmar y Enviar a Lavado"
+      />
     </div>
   )
 }

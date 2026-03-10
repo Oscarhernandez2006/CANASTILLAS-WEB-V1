@@ -14,6 +14,7 @@ import { ClientesPage } from './pages/ClientesPage'
 import { InventarioPage } from './pages/InventarioPage'
 import { PermisosPage } from './pages/PermisosPage'
 import { ReportesPage } from './pages/ReportesPage'
+import { TrazabilidadPage } from './pages/TrazabilidadPage'
 
 // Componente para rutas protegidas
 function ProtectedRoute({ children, requirePermission }: { children: React.ReactNode, requirePermission?: () => boolean }) {
@@ -144,6 +145,15 @@ function App() {
           element={
             <ProtectedRoute>
               <PermisosPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/trazabilidad"
+          element={
+            <ProtectedRoute>
+              <TrazabilidadPage />
             </ProtectedRoute>
           }
         />

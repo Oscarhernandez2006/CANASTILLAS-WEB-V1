@@ -1,224 +1,57 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Transfer } from '@/types'
+import type { Transfer, SignatureData } from '@/types'
+import { C, ACCENT, loadLogoBase64, drawHeader, drawSectionTitle, drawInfoCard, drawDetailLine, drawSignatures, drawFooter, tableStyles } from '@/utils/pdfStyles'
 
-// Función para convertir imagen a base64
-const getBase64FromUrl = async (url: string): Promise<string> => {
-  try {
-    const response = await fetch(url)
-    const blob = await response.blob()
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch (error) {
-    console.error('Error loading image:', error)
-    throw error
-  }
-}
-
-export const generateRemisionTraspasoPDF = async (transfer: Transfer) => {
+export const generateRemisionTraspasoPDF = async (transfer: Transfer, signatureData?: SignatureData) => {
   const doc = new jsPDF()
 
-  // Detectar si es un traspaso de lavado
   const isWashingTransfer = transfer.is_washing_transfer || false
-
-  // Paleta de colores
-  const black: [number, number, number] = [0, 0, 0]
-  const darkGray: [number, number, number] = [51, 51, 51]
-  const mediumGray: [number, number, number] = [102, 102, 102]
-  const lightGray: [number, number, number] = [242, 242, 242]
-  const borderGray: [number, number, number] = [217, 217, 217]
-  const accentPurple: [number, number, number] = [139, 92, 246] // Violeta para traspasos
-  const accentCyan: [number, number, number] = [6, 182, 212] // Cyan para lavado
-
-  // Color de acento según tipo de traspaso
-  const accentColor = isWashingTransfer ? accentCyan : accentPurple
+  const accentPair = isWashingTransfer ? ACCENT.cyan : ACCENT.purple
+  const accent = accentPair.main
 
   const pageHeight = doc.internal.pageSize.height
 
-  // ============================================
-  // HEADER EMPRESARIAL
-  // ============================================
-
-  // Línea superior de acento
-  doc.setFillColor(...accentColor)
-  doc.rect(0, 0, 210, 2, 'F')
-
-  // Cargar logo
-  let logoLoaded = false
-  try {
-    let logoBase64: string | null = null
-    const logoPaths = [
-      `${window.location.origin}/logo.png`,
-      '/logo.png',
-      './logo.png'
-    ]
-
-    for (const path of logoPaths) {
-      try {
-        logoBase64 = await getBase64FromUrl(path)
-        break
-      } catch (e) {
-        continue
-      }
-    }
-
-    if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 15, 10, 30, 30)
-      logoLoaded = true
-    }
-  } catch (error) {
-    console.error('Error loading logo:', error)
-  }
-
-  // Información de la empresa
-  const companyX = logoLoaded ? 50 : 15
-  doc.setTextColor(...darkGray)
-  doc.setFontSize(24)
-  doc.setFont('helvetica', 'bold')
-  doc.text('SANTACRUZ', companyX, 20)
-
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text('Sistema de Gestión de Canastillas', companyX, 27)
-  doc.text('Barranquilla, Atlántico - Colombia', companyX, 32)
-  doc.text('Tel: +57 311 758 0698', companyX, 37)
-
-  // Cuadro de remisión
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(1)
-  doc.rect(140, 10, 55, 35)
-
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...accentColor)
+  // Header profesional
+  const logoBase64 = await loadLogoBase64()
   const tituloRemision = isWashingTransfer ? 'REMISIÓN LAVADO' : 'REMISIÓN TRASPASO'
-  doc.text(tituloRemision, 167.5, 18, { align: 'center' })
-
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text(transfer.remision_number || '', 167.5, 28, { align: 'center' })
-
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  // Usar la fecha de generación de remisión, o la fecha de solicitud si no está aprobado aún
   const fechaRemision = transfer.remision_generated_at
-    ? new Date(transfer.remision_generated_at).toLocaleDateString('es-CO', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      })
-    : new Date(transfer.requested_at).toLocaleDateString('es-CO', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      })
-  doc.text(`Fecha: ${fechaRemision}`, 167.5, 38, { align: 'center' })
+    ? new Date(transfer.remision_generated_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date(transfer.requested_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  // Línea divisoria
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.line(15, 50, 195, 50)
+  let yPos = drawHeader(doc, accent, accentPair.dark, logoBase64, tituloRemision, transfer.remision_number || '', fechaRemision)
 
-  // ============================================
-  // INFORMACIÓN DE USUARIOS
-  // ============================================
-  let yPos = 60
+  // Información de usuarios - 2 columnas
+  yPos = drawSectionTitle(doc, 'ENTREGA', yPos, accent, 35)
 
-  // Usuario que entrega (columna izquierda)
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('ENTREGA:', 15, yPos)
+  const fromLines = [
+    `Email: ${transfer.from_user?.email || ''}`,
+    ...(transfer.from_user?.department ? [`Departamento: ${transfer.from_user.department}`] : []),
+    ...(transfer.from_user?.area ? [`Área: ${transfer.from_user.area}`] : []),
+  ]
+  yPos = drawInfoCard(doc, yPos, accent, `${transfer.from_user?.first_name || ''} ${transfer.from_user?.last_name || ''}`, fromLines)
 
-  yPos += 2
-  doc.setDrawColor(...accentColor)
-  doc.setLineWidth(2)
-  doc.line(15, yPos, 45, yPos)
+  yPos = drawSectionTitle(doc, 'RECIBE', yPos, accent, 30)
 
-  yPos += 8
+  const toName = transfer.is_external_transfer
+    ? (transfer.external_recipient_name || 'Externo')
+    : `${transfer.to_user?.first_name || ''} ${transfer.to_user?.last_name || ''}`
 
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  doc.text(`${transfer.from_user?.first_name || ''} ${transfer.from_user?.last_name || ''}`, 15, yPos)
+  const toLines = transfer.is_external_transfer
+    ? [
+        ...(transfer.external_recipient_cedula ? [`Cédula: ${transfer.external_recipient_cedula}`] : []),
+        ...(transfer.external_recipient_empresa ? [`Empresa: ${transfer.external_recipient_empresa}`] : []),
+      ]
+    : [
+        `Email: ${transfer.to_user?.email || ''}`,
+        ...(transfer.to_user?.department ? [`Departamento: ${transfer.to_user.department}`] : []),
+        ...(transfer.to_user?.area ? [`Área: ${transfer.to_user.area}`] : []),
+      ]
+  yPos = drawInfoCard(doc, yPos, accent, toName, toLines)
 
-  yPos += 5
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text(`Email: ${transfer.from_user?.email || ''}`, 15, yPos)
-
-  if (transfer.from_user?.department) {
-    yPos += 5
-    doc.text(`Departamento: ${transfer.from_user.department}`, 15, yPos)
-  }
-
-  if (transfer.from_user?.area) {
-    yPos += 5
-    doc.text(`Área: ${transfer.from_user.area}`, 15, yPos)
-  }
-
-  // Usuario que recibe (columna derecha)
-  let rightYPos = 60
-
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('RECIBE:', 115, rightYPos)
-
-  rightYPos += 2
-  doc.setDrawColor(...accentColor)
-  doc.setLineWidth(2)
-  doc.line(115, rightYPos, 145, rightYPos)
-
-  rightYPos += 8
-
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  doc.text(`${transfer.to_user?.first_name || ''} ${transfer.to_user?.last_name || ''}`, 115, rightYPos)
-
-  rightYPos += 5
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text(`Email: ${transfer.to_user?.email || ''}`, 115, rightYPos)
-
-  if (transfer.to_user?.department) {
-    rightYPos += 5
-    doc.text(`Departamento: ${transfer.to_user.department}`, 115, rightYPos)
-  }
-
-  if (transfer.to_user?.area) {
-    rightYPos += 5
-    doc.text(`Área: ${transfer.to_user.area}`, 115, rightYPos)
-  }
-
-  yPos = Math.max(yPos, rightYPos) + 15
-
-  // ============================================
-  // CANASTILLAS
-  // ============================================
-
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
+  // Canastillas
   const tituloCanastillas = isWashingTransfer ? 'CANASTILLAS ENVIADAS A LAVADO' : 'CANASTILLAS TRASPASADAS'
-  doc.text(tituloCanastillas, 15, yPos)
-
-  yPos += 2
-  doc.setDrawColor(...accentColor)
-  doc.setLineWidth(2)
-  doc.line(15, yPos, isWashingTransfer ? 90 : 75, yPos)
-
-  yPos += 8
+  yPos = drawSectionTitle(doc, tituloCanastillas, yPos, accent)
 
   // Agrupar canastillas por tamaño, color, forma y condición
   type CanastillaGroup = { size: string; color: string; shape: string; condition: string; count: number }
@@ -250,26 +83,8 @@ export const generateRemisionTraspasoPDF = async (transfer: Transfer) => {
     startY: yPos,
     head: [['#', 'TAMAÑO', 'COLOR', 'FORMA', 'CONDICIÓN', 'CANTIDAD']],
     body: canastillasData,
-    theme: 'striped',
-    styles: {
-      fontSize: 9,
-      cellPadding: 4,
-      lineColor: [...borderGray],
-      lineWidth: 0.1,
-    },
-    headStyles: {
-      fillColor: [...accentColor],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 9,
-      halign: 'center',
-    },
-    bodyStyles: {
-      textColor: [...darkGray],
-    },
-    alternateRowStyles: {
-      fillColor: [...lightGray],
-    },
+    ...tableStyles(accent),
+    theme: 'grid',
     columnStyles: {
       0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
       1: { cellWidth: 35, halign: 'center' },
@@ -282,56 +97,21 @@ export const generateRemisionTraspasoPDF = async (transfer: Transfer) => {
 
   yPos = (doc as any).lastAutoTable.finalY + 10
 
-  // ============================================
-  // RESUMEN
-  // ============================================
-
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.line(15, yPos, 195, yPos)
-
-  yPos += 8
-
+  // Resumen
   const totalCanastillas = transfer.transfer_items?.length || 0
+  const fechaSolicitud = new Date(transfer.requested_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+  drawDetailLine(doc, 'Total de canastillas:', `${totalCanastillas} unidades`, yPos)
+  yPos += 7
+  drawDetailLine(doc, 'Fecha de solicitud:', fechaSolicitud, yPos)
+  yPos += 7
 
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text('Total de canastillas:', 130, yPos)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  doc.text(`${totalCanastillas} unidades`, 195, yPos, { align: 'right' })
-
-  yPos += 8
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...mediumGray)
-  doc.text('Fecha de solicitud:', 130, yPos)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...black)
-  const fechaSolicitud = new Date(transfer.requested_at).toLocaleDateString('es-CO', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric'
-  })
-  doc.text(fechaSolicitud, 195, yPos, { align: 'right' })
-
-  // ============================================
-  // NOTAS
-  // ============================================
-
+  // Notas
   if (transfer.notes) {
-    yPos += 15
-
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...darkGray)
-    doc.text('OBSERVACIONES:', 15, yPos)
-
     yPos += 5
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...mediumGray)
+    yPos = drawSectionTitle(doc, 'OBSERVACIONES', yPos, accent)
     doc.setFontSize(8)
-
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...C.medium)
     const lines = doc.splitTextToSize(transfer.notes, 175)
     lines.forEach((line: string) => {
       doc.text(line, 15, yPos)
@@ -339,83 +119,34 @@ export const generateRemisionTraspasoPDF = async (transfer: Transfer) => {
     })
   }
 
-  // ============================================
-  // SECCIÓN DE FIRMAS
-  // ============================================
+  // Firmas
+  const hasTercero = !!signatureData?.firma_tercero_base64
+  const labels: [string, string] | [string, string, string] = hasTercero
+    ? ['ENTREGA', 'RECIBE', 'TERCERO']
+    : ['ENTREGA', 'RECIBE']
+  drawSignatures(doc, signatureData, labels)
 
-  const firmasY = pageHeight - 50
-
-  // Línea divisoria
-  doc.setDrawColor(...borderGray)
-  doc.setLineWidth(0.5)
-  doc.line(15, firmasY, 195, firmasY)
-
-  // Título de firmas
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('FIRMAS DE CONFORMIDAD', 105, firmasY + 7, { align: 'center' })
-
-  // Columna: ENTREGA
-  const col1X = 50
-  let firmaY = firmasY + 20
-
-  doc.setDrawColor(...darkGray)
-  doc.setLineWidth(0.5)
-  doc.line(20, firmaY, 80, firmaY)
-
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('ENTREGA', col1X, firmaY + 5, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(...mediumGray)
-  doc.text('Nombre:', 20, firmaY + 10)
-  doc.text('Cédula:', 20, firmaY + 15)
-
-  // Columna: RECIBE
-  const col2X = 160
-
-  doc.setDrawColor(...darkGray)
-  doc.setLineWidth(0.5)
-  doc.line(130, firmaY, 190, firmaY)
-
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...darkGray)
-  doc.text('RECIBE', col2X, firmaY + 5, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(...mediumGray)
-  doc.text('Nombre:', 130, firmaY + 10)
-  doc.text('Cédula:', 130, firmaY + 15)
-
-  // ============================================
-  // FOOTER
-  // ============================================
-
-  doc.setFontSize(7)
-  doc.setTextColor(180, 180, 180)
-  const docText = `Documento generado: ${new Date().toLocaleString('es-CO')}`
-  const docWidth = doc.getTextWidth(docText)
-  doc.text(docText, (210 - docWidth) / 2, pageHeight - 8)
+  // Footer
+  drawFooter(doc, accent)
 
   return doc
 }
 
-export const downloadRemisionTraspasoPDF = async (transfer: Transfer) => {
-  const doc = await generateRemisionTraspasoPDF(transfer)
+export const downloadRemisionTraspasoPDF = async (transfer: Transfer, signatureData?: SignatureData) => {
+  const doc = await generateRemisionTraspasoPDF(transfer, signatureData)
   const tipoRemision = transfer.is_washing_transfer ? 'Lavado' : 'Traspaso'
   const fileName = `Remision_${tipoRemision}_${transfer.remision_number}.pdf`
   doc.save(fileName)
 }
 
-export const openRemisionTraspasoPDF = async (transfer: Transfer) => {
-  const doc = await generateRemisionTraspasoPDF(transfer)
+export const openRemisionTraspasoPDF = async (transfer: Transfer, signatureData?: SignatureData) => {
+  const doc = await generateRemisionTraspasoPDF(transfer, signatureData)
   const pdfBlob = doc.output('blob')
   const pdfUrl = URL.createObjectURL(pdfBlob)
   window.open(pdfUrl, '_blank')
+}
+
+export const getRemisionTraspasoPDFBlob = async (transfer: Transfer, signatureData?: SignatureData): Promise<Blob> => {
+  const doc = await generateRemisionTraspasoPDF(transfer, signatureData)
+  return doc.output('blob')
 }
