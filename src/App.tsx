@@ -18,6 +18,7 @@ import { TrazabilidadPage } from './pages/TrazabilidadPage'
 import { GeolocalizacionPage } from './pages/GeolocalizacionPage'
 import { FacturacionPage } from './pages/FacturacionPage'
 import { ConsultarFacturacionPage } from './pages/ConsultarFacturacionPage'
+import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
 function ProtectedRoute({ children, requirePermission }: { children: React.ReactNode, requirePermission?: () => boolean }) {
@@ -200,6 +201,7 @@ function App() {
         {/* Ruta 404 */}
         <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} />} />
       </Routes>
+      <ReloadPrompt />
     </BrowserRouter>
   )
 }

@@ -6,9 +6,10 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
-            registerType: 'autoUpdate',
-            includeAssets: ['logo.png'],
+            registerType: 'prompt',
+            includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
             manifest: {
+                id: '/',
                 name: 'CANASTILLA WEB - Gestión de Inventario',
                 short_name: 'Canastilla Web',
                 description: 'Sistema de gestión de alquiler de canastillas - Grupo Empresarial Santacruz',
@@ -18,6 +19,7 @@ export default defineConfig({
                 orientation: 'portrait',
                 scope: '/',
                 start_url: '/',
+                categories: ['business', 'productivity'],
                 icons: [
                     {
                         src: '/pwa-192x192.png',
@@ -40,15 +42,36 @@ export default defineConfig({
             workbox: {
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                 maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+                navigateFallback: 'index.html',
+                navigateFallbackDenylist: [/^\/api/],
                 runtimeCaching: [
                     {
-                        urlPattern: /^https:\/\/.*supabase\.co\/.*/i,
+                        urlPattern: /^https:\/\/.*supabase\.co\/rest\/.*/i,
                         handler: 'NetworkFirst',
                         options: {
                             cacheName: 'supabase-api',
                             expiration: {
                                 maxEntries: 50,
                                 maxAgeSeconds: 300,
+                            },
+                            networkTimeoutSeconds: 10,
+                        },
+                    },
+                    {
+                        urlPattern: /^https:\/\/.*supabase\.co\/auth\/.*/i,
+                        handler: 'NetworkOnly',
+                        options: {
+                            cacheName: 'supabase-auth',
+                        },
+                    },
+                    {
+                        urlPattern: /^https:\/\/.*supabase\.co\/storage\/.*/i,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'supabase-storage',
+                            expiration: {
+                                maxEntries: 100,
+                                maxAgeSeconds: 60 * 60 * 24 * 7,
                             },
                         },
                     },
