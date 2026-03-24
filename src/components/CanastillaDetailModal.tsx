@@ -22,19 +22,19 @@ export function CanastillaDetailModal({ isOpen, onClose, canastilla }: Canastill
 
         {/* Modal */}
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-4xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-primary-600 px-6 py-4">
+          <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold text-white">
                 Detalles de Canastilla
               </h3>
               <button
                 onClick={onClose}
-                className="text-white hover:text-gray-200"
+                className="p-1 text-white hover:text-gray-200 rounded-lg"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -44,8 +44,8 @@ export function CanastillaDetailModal({ isOpen, onClose, canastilla }: Canastill
           </div>
 
           {/* Body */}
-          <div className="px-6 py-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="px-4 sm:px-6 py-4 sm:py-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
               {/* Información de la canastilla */}
               <div className="space-y-6">
                 <div>
@@ -141,7 +141,7 @@ export function CanastillaDetailModal({ isOpen, onClose, canastilla }: Canastill
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-6 py-4 flex items-center justify-end">
+          <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-end">
             <button
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"

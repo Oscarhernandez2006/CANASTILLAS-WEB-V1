@@ -105,11 +105,11 @@ export function MarcarLavadoModal({
         />
 
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="bg-purple-600 px-6 py-4">
+          <div className="bg-purple-600 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-white/20 rounded-lg">
@@ -124,7 +124,7 @@ export function MarcarLavadoModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-white hover:text-gray-200"
+                className="p-1 text-white hover:text-gray-200 rounded-lg"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -133,7 +133,7 @@ export function MarcarLavadoModal({
             </div>
           </div>
 
-          <div className="px-6 py-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-3 sm:space-y-4 max-h-[60vh] overflow-y-auto">
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg">
                 <p className="text-sm">{error}</p>
@@ -142,7 +142,7 @@ export function MarcarLavadoModal({
 
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-medium text-gray-900 mb-3">Resumen de la Orden</h4>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-gray-500">Remisión:</span>
                   <p className="font-medium">{order.remision_entrega_number}</p>
@@ -220,7 +220,7 @@ export function MarcarLavadoModal({
             </div>
           </div>
 
-          <div className="bg-gray-50 px-6 py-4 flex items-center justify-end space-x-3">
+          <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-end space-x-3">
             <Button
               type="button"
               variant="outline"

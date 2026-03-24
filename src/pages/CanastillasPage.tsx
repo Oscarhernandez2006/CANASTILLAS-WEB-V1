@@ -148,6 +148,7 @@ export function CanastillasPage() {
                 <option value="ALL">Todos los estados</option>
                 <option value="DISPONIBLE">Disponible</option>
                 <option value="EN_ALQUILER">En Alquiler</option>
+                <option value="EN_RETORNO">En Retorno</option>
                 <option value="EN_LAVADO">En Lavado</option>
                 <option value="EN_USO_INTERNO">En Uso Interno</option>
                 <option value="EN_REPARACION">En Reparación</option>

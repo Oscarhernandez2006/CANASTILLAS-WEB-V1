@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
-import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { CrearAlquilerModal } from '@/components/CrearAlquilerModal'
 import { ProcesarRetornoModal } from '@/components/ProcesarRetornoModal'
 import { DetalleAlquilerModal } from '@/components/DetalleAlquilerModal'
+import { AgregarCanastillasAlquilerModal } from '@/components/AgregarCanastillasAlquilerModal'
+import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { useRentals } from '@/hooks/useRentals'
 import { useRentalSettings } from '@/hooks/useRentalSettings'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -23,10 +24,11 @@ export function AlquileresPage() {
   const [showCrearModal, setShowCrearModal] = useState(false)
   const [showRetornoModal, setShowRetornoModal] = useState(false)
   const [showDetalleModal, setShowDetalleModal] = useState(false)
+  const [showAgregarModal, setShowAgregarModal] = useState(false)
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null)
-  const [showFirmaClienteModal, setShowFirmaClienteModal] = useState(false)
-  const [selectedRentalForSignature, setSelectedRentalForSignature] = useState<any>(null)
   const [firmaLoading, setFirmaLoading] = useState(false)
+  const [showFirmaServicioModal, setShowFirmaServicioModal] = useState(false)
+  const [rentalParaConfirmar, setRentalParaConfirmar] = useState<Rental | null>(null)
 
   // Estados para edición de configuración
   const [isEditingConfig, setIsEditingConfig] = useState(false)
@@ -71,26 +73,164 @@ export function AlquileresPage() {
     return Math.max(1, diffDays) // Mínimo 1 día
   }
 
-  const calculateCurrentTotal = (startDate: string, canastillasCount: number, dailyRate: number) => {
-    const days = calculateCurrentDays(startDate)
-    return days * canastillasCount * dailyRate
+  const handleConfirmarAlquiler = (rental: Rental) => {
+    setRentalParaConfirmar(rental)
+    setShowFirmaServicioModal(true)
   }
 
-  const handleFirmaCliente = async (rental: Rental) => {
+  const handleFirmaServicioConfirm = async (signatureData: SignatureData) => {
+    if (!rentalParaConfirmar) return
+    setShowFirmaServicioModal(false)
+    setFirmaLoading(true)
     try {
-      // Obtener datos del rental con firma de entrega
+      // 1. Obtener datos del rental
       const { data: rentalData, error: fetchError } = await supabase
         .from('rentals')
         .select(`*, sale_point:sale_points(*)`)
-        .eq('id', rental.id)
+        .eq('id', rentalParaConfirmar.id)
         .single()
 
       if (fetchError) throw fetchError
 
-      setSelectedRentalForSignature(rentalData)
-      setShowFirmaClienteModal(true)
+      // 2. Activar el alquiler y guardar firma de servicio (solo si sigue PENDIENTE)
+      const { data: activateResult, error } = await supabase
+        .from('rentals')
+        .update({
+          status: 'ACTIVO',
+          firma_entrega_base64: signatureData.firma_entrega_base64,
+          firma_entrega_nombre: signatureData.firma_entrega_nombre,
+          firma_entrega_cedula: signatureData.firma_entrega_cedula,
+        })
+        .eq('id', rentalParaConfirmar.id)
+        .eq('status', 'PENDIENTE')
+        .select('id')
+
+      if (error) throw error
+
+      if (!activateResult || activateResult.length === 0) {
+        throw new Error('No se pudo confirmar el alquiler porque su estado cambió. Posiblemente ya fue activado o cancelado. Actualiza la página.')
+      }
+
+      // 3. Generar y subir PDF con firma
+      const PAGE_SIZE_ITEMS = 1000
+      let allRentalItems: any[] = []
+      let hasMoreItems = true
+      let offsetItems = 0
+
+      while (hasMoreItems) {
+        const { data: itemsBatch, error: itemsFetchError } = await supabase
+          .from('rental_items')
+          .select('*, canastilla:canastillas(*)')
+          .eq('rental_id', rentalParaConfirmar.id)
+          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
+        if (itemsFetchError) throw itemsFetchError
+        if (itemsBatch && itemsBatch.length > 0) {
+          allRentalItems = [...allRentalItems, ...itemsBatch]
+          offsetItems += PAGE_SIZE_ITEMS
+          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
+        } else {
+          hasMoreItems = false
+        }
+      }
+
+      const rentalComplete = { ...rentalData, rental_items: allRentalItems }
+
+      try {
+        const pdfBlob = await getRemisionPDFBlob(rentalComplete, rentalData.remision_number, signatureData)
+        const pdfUrl = await uploadSignedPDF(pdfBlob, 'rentals', `Remision_${rentalData.remision_number}.pdf`)
+        if (pdfUrl) {
+          await supabase.from('rentals').update({ signed_pdf_url: pdfUrl }).eq('id', rentalParaConfirmar.id)
+        }
+      } catch (pdfErr) {
+        console.error('Error al subir PDF:', pdfErr)
+      }
+
+      // 4. Abrir PDF de remisión
+      try {
+        await openRemisionPDF(rentalComplete, rentalData.remision_number, signatureData)
+      } catch (pdfErr) {
+        console.error('Error al abrir PDF:', pdfErr)
+      }
+
+      alert(`Alquiler confirmado exitosamente.\nRemisión: ${rentalData.remision_number}`)
+      setRentalParaConfirmar(null)
+      refreshRentals()
     } catch (error: any) {
-      alert('Error al cargar el alquiler: ' + error.message)
+      alert('Error: ' + error.message)
+    } finally {
+      setFirmaLoading(false)
+    }
+  }
+
+  const handleCancelarAlquiler = async (rental: Rental) => {
+    if (!confirm('¿Estás seguro de cancelar este alquiler? Las canastillas volverán a estado DISPONIBLE.')) return
+
+    try {
+      // 0. Verificar que el alquiler siga en estado cancelable (protección contra race condition)
+      const { data: currentRental, error: checkError } = await supabase
+        .from('rentals')
+        .select('status')
+        .eq('id', rental.id)
+        .single()
+
+      if (checkError) throw checkError
+
+      if (currentRental.status === 'RETORNADO') {
+        alert('Este alquiler ya fue retornado por otro usuario. Actualizando lista...')
+        refreshRentals()
+        return
+      }
+
+      if (currentRental.status === 'ACTIVO') {
+        // Si está ACTIVO (ya fue confirmado con firma), no se puede cancelar directamente
+        alert('Este alquiler ya fue confirmado/activado. No se puede cancelar.')
+        refreshRentals()
+        return
+      }
+
+      // 1. Obtener los rental_items para saber qué canastillas liberar
+      const { data: rentalItems, error: itemsError } = await supabase
+        .from('rental_items')
+        .select('canastilla_id')
+        .eq('rental_id', rental.id)
+
+      if (itemsError) throw itemsError
+
+      const canastillaIds = (rentalItems || []).map(item => item.canastilla_id)
+
+      // 2. Devolver canastillas a DISPONIBLE
+      if (canastillaIds.length > 0) {
+        const BATCH = 200
+        for (let i = 0; i < canastillaIds.length; i += BATCH) {
+          const batch = canastillaIds.slice(i, i + BATCH)
+          const { error } = await supabase
+            .from('canastillas')
+            .update({ status: 'DISPONIBLE', current_location: 'CANASTILLERO' })
+            .in('id', batch)
+          if (error) throw error
+        }
+      }
+
+      // 3. Eliminar rental_items
+      const { error: deleteItemsError } = await supabase
+        .from('rental_items')
+        .delete()
+        .eq('rental_id', rental.id)
+
+      if (deleteItemsError) throw deleteItemsError
+
+      // 4. Eliminar el rental
+      const { error: deleteRentalError } = await supabase
+        .from('rentals')
+        .delete()
+        .eq('id', rental.id)
+
+      if (deleteRentalError) throw deleteRentalError
+
+      alert('Alquiler cancelado exitosamente.')
+      refreshRentals()
+    } catch (error: any) {
+      alert('Error al cancelar: ' + error.message)
     }
   }
 
@@ -148,86 +288,6 @@ export function AlquileresPage() {
       await openRemisionPDF(rentalComplete, rentalData.remision_number, signatureData)
     } catch (error: any) {
       alert('Error al generar la remisión: ' + error.message)
-    }
-  }
-
-  const handleFirmaClienteConfirm = async (signatureData: SignatureData) => {
-    setShowFirmaClienteModal(false)
-    setFirmaLoading(true)
-
-    try {
-      const rental = selectedRentalForSignature
-      if (!rental) throw new Error('No se encontró el alquiler')
-
-      // 1. Actualizar rental a ACTIVO + guardar firma del cliente
-      const { error } = await supabase
-        .from('rentals')
-        .update({
-          status: 'ACTIVO',
-          firma_recibe_base64: signatureData.firma_recibe_base64,
-          firma_recibe_nombre: signatureData.firma_recibe_nombre,
-          firma_recibe_cedula: signatureData.firma_recibe_cedula,
-        })
-        .eq('id', rental.id)
-
-      if (error) throw error
-
-      // 2. Obtener todos los rental_items para el PDF
-      const PAGE_SIZE_ITEMS = 1000
-      let allRentalItems: any[] = []
-      let hasMoreItems = true
-      let offsetItems = 0
-
-      while (hasMoreItems) {
-        const { data: itemsBatch, error: itemsFetchError } = await supabase
-          .from('rental_items')
-          .select('*, canastilla:canastillas(*)')
-          .eq('rental_id', rental.id)
-          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
-        if (itemsFetchError) throw itemsFetchError
-        if (itemsBatch && itemsBatch.length > 0) {
-          allRentalItems = [...allRentalItems, ...itemsBatch]
-          offsetItems += PAGE_SIZE_ITEMS
-          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
-        } else {
-          hasMoreItems = false
-        }
-      }
-
-      const rentalComplete = { ...rental, rental_items: allRentalItems }
-
-      // 3. Combinar ambas firmas
-      const fullSignatureData: SignatureData = {
-        firma_entrega_base64: rental.firma_entrega_base64 || '',
-        firma_entrega_nombre: rental.firma_entrega_nombre || '',
-        firma_entrega_cedula: rental.firma_entrega_cedula || '',
-        firma_recibe_base64: signatureData.firma_recibe_base64,
-        firma_recibe_nombre: signatureData.firma_recibe_nombre,
-        firma_recibe_cedula: signatureData.firma_recibe_cedula,
-      }
-
-      // 4. Generar PDF con ambas firmas y subir a storage
-      try {
-        const pdfBlob = await getRemisionPDFBlob(rentalComplete, rental.remision_number, fullSignatureData)
-        const pdfUrl = await uploadSignedPDF(pdfBlob, 'rentals', `Remision_${rental.remision_number}.pdf`)
-        if (pdfUrl) {
-          await supabase.from('rentals').update({ signed_pdf_url: pdfUrl }).eq('id', rental.id)
-        }
-      } catch (pdfErr) {
-        console.error('Error al subir PDF firmado:', pdfErr)
-      }
-
-      // 5. Abrir PDF con ambas firmas
-      await openRemisionPDF(rentalComplete, rental.remision_number, fullSignatureData)
-
-      alert(`Alquiler activado exitosamente.\nRemisión: ${rental.remision_number}`)
-
-      setSelectedRentalForSignature(null)
-      refreshRentals()
-    } catch (error: any) {
-      alert('Error: ' + error.message)
-    } finally {
-      setFirmaLoading(false)
     }
   }
 
@@ -384,7 +444,7 @@ export function AlquileresPage() {
                     <div key={rental.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
                             <h3 className="text-lg font-semibold text-gray-900">
                               {rental.sale_point?.name}
                             </h3>
@@ -412,7 +472,7 @@ export function AlquileresPage() {
                           <p className="text-sm text-gray-500">{rental.sale_point?.contact_phone}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-bold text-primary-600">
+                          <p className="text-lg sm:text-2xl font-bold text-primary-600">
                             {formatCurrency(currentTotal)}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">Total pendiente</p>
@@ -503,28 +563,57 @@ export function AlquileresPage() {
                           </button>
                         </div>
                         {rental.status === 'PENDIENTE_FIRMA' ? (
-                          <Button
-                            size="sm"
-                            className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700"
-                            onClick={() => handleFirmaCliente(rental)}
-                            loading={firmaLoading}
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                            Firma Cliente
-                          </Button>
+                          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <Button
+                              size="sm"
+                              className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700"
+                              onClick={() => handleConfirmarAlquiler(rental)}
+                              loading={firmaLoading}
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Confirmar Alquiler
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full sm:w-auto text-red-600 border-red-300 hover:bg-red-50"
+                              onClick={() => handleCancelarAlquiler(rental)}
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Cancelar
+                            </Button>
+                          </div>
                         ) : (
-                          <Button
-                            size="sm"
-                            className="w-full sm:w-auto"
-                            onClick={() => {
-                              setSelectedRental(rental)
-                              setShowRetornoModal(true)
-                            }}
-                          >
-                            Procesar Retorno
-                          </Button>
+                          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full sm:w-auto"
+                              onClick={() => {
+                                setSelectedRental(rental)
+                                setShowAgregarModal(true)
+                              }}
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
+                              Agregar
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="w-full sm:w-auto"
+                              onClick={() => {
+                                setSelectedRental(rental)
+                                setShowRetornoModal(true)
+                              }}
+                            >
+                              Procesar Retorno
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -867,26 +956,33 @@ export function AlquileresPage() {
         rental={selectedRental}
       />
 
-      {/* Modal de Firma Digital - Cliente firma para activar alquiler */}
-      <FirmaDigitalModal
-        isOpen={showFirmaClienteModal}
+      {/* Modal de Agregar Canastillas */}
+      <AgregarCanastillasAlquilerModal
+        isOpen={showAgregarModal}
         onClose={() => {
-          setShowFirmaClienteModal(false)
-          setSelectedRentalForSignature(null)
+          setShowAgregarModal(false)
+          setSelectedRental(null)
         }}
-        onConfirm={handleFirmaClienteConfirm}
-        loading={firmaLoading}
-        title="Firma del Cliente"
-        entregaLabel="ENTREGA"
-        recibeLabel="CLIENTE"
-        mode="recibe-only"
-        prefillEntrega={selectedRentalForSignature ? {
-          nombre: selectedRentalForSignature.firma_entrega_nombre || '',
-          cedula: selectedRentalForSignature.firma_entrega_cedula || '',
-          firma_base64: selectedRentalForSignature.firma_entrega_base64 || '',
-        } : undefined}
-        confirmButtonText="Firmar y Activar Alquiler"
+        onSuccess={() => {
+          refreshRentals()
+          setShowAgregarModal(false)
+          setSelectedRental(null)
+        }}
+        rental={selectedRental}
       />
+
+      {/* Modal de Firma de Servicio para confirmar alquiler */}
+      <FirmaDigitalModal
+        isOpen={showFirmaServicioModal}
+        onClose={() => { setShowFirmaServicioModal(false); setRentalParaConfirmar(null) }}
+        onConfirm={handleFirmaServicioConfirm}
+        loading={firmaLoading}
+        title="Firma de Servicio"
+        entregaLabel="SERVICIO"
+        mode="entrega-only"
+        confirmButtonText="Firmar y Confirmar Alquiler"
+      />
+
     </DashboardLayout>
   )
 }

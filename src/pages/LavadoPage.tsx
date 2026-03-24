@@ -124,18 +124,18 @@ export function LavadoPage() {
 
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2">
-          <div className={`grid grid-cols-${tabs.length} gap-2`}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 rounded-lg font-medium transition-colors relative ${
+                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors relative text-xs sm:text-sm ${
                   activeTab === tab.id
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {tab.icon} {tab.label}
+                <span className="hidden sm:inline">{tab.icon} </span>{tab.label}
                 {tab.count > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {tab.count}

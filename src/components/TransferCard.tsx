@@ -73,19 +73,19 @@ export function TransferCard({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <div className="flex items-center space-x-3 mb-2">
-            <h3 className="text-lg font-semibold text-gray-900">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
               {isFromMe ? 'Para: ' : 'De: '}
               {isFromMe 
                 ? `${transfer.to_user.first_name} ${transfer.to_user.last_name}`
                 : `${transfer.from_user.first_name} ${transfer.from_user.last_name}`
               }
             </h3>
-            <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusBadge(transfer.status)}`}>
+            <span className={`px-3 py-1 text-xs font-medium rounded-full flex-shrink-0 ${getStatusBadge(transfer.status)}`}>
               {getStatusLabel(transfer.status)}
             </span>
           </div>
@@ -132,7 +132,7 @@ export function TransferCard({
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3">
         <div className="text-xs text-gray-500">
           <p>Solicitado: {formatDate(transfer.requested_at)}</p>
           {transfer.responded_at && (
@@ -142,7 +142,7 @@ export function TransferCard({
 
         {/* Acciones */}
         {isPending && type === 'recibido' && (
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 flex-shrink-0">
             <Button
               size="sm"
               variant="outline"

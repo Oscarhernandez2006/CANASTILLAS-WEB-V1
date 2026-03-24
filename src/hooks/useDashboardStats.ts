@@ -10,6 +10,7 @@ export interface LocationData {
   enUsoInterno: number
   enLavado: number
   enReparacion: number
+  enRetorno: number
 }
 
 interface DashboardStats {
@@ -20,6 +21,7 @@ interface DashboardStats {
   enLavado: number
   enUsoInterno: number
   enReparacion: number
+  enRetorno: number
   ingresosEsteMes: number
   proyeccionIngresos: number
   locations: LocationData[]
@@ -38,6 +40,7 @@ export function useDashboardStats() {
     enLavado: 0,
     enUsoInterno: 0,
     enReparacion: 0,
+    enRetorno: 0,
     ingresosEsteMes: 0,
     proyeccionIngresos: 0,
     locations: [],
@@ -82,6 +85,7 @@ export function useDashboardStats() {
         enUsoInternoResult,
         enReparacionResult,
         enAlquilerResult,
+        enRetornoResult,
       ] = await Promise.all([
         buildCountQuery(),
         buildCountQuery('DISPONIBLE'),
@@ -89,6 +93,7 @@ export function useDashboardStats() {
         buildCountQuery('EN_USO_INTERNO'),
         buildCountQuery('EN_REPARACION'),
         buildCountQuery('EN_ALQUILER'),
+        buildCountQuery('EN_RETORNO'),
       ])
 
       const totalCanastillas = totalResult.count || 0
@@ -96,6 +101,7 @@ export function useDashboardStats() {
       const enLavado = enLavadoResult.count || 0
       const enUsoInterno = enUsoInternoResult.count || 0
       const enReparacion = enReparacionResult.count || 0
+      const enRetorno = enRetornoResult.count || 0
       const totalEnAlquiler = enAlquilerResult.count || 0
 
       // Para diferenciar alquiler interno/externo, consultar los rentals activos
@@ -103,37 +109,42 @@ export function useDashboardStats() {
       let enAlquilerExterno = 0
 
       if (totalEnAlquiler > 0) {
-        // Contar items de alquiler por tipo usando count
-        const [internoResult, externoResult] = await Promise.all([
-          supabase
+        // Construir consultas base con filtro por owner si no es super_admin
+        const buildRentalCountQuery = (rentalType: string) => {
+          let query = supabase
             .from('rental_items')
             .select('*, rentals!inner(*), canastillas!inner(*)', { count: 'exact', head: true })
             .eq('rentals.status', 'ACTIVO')
-            .eq('rentals.rental_type', 'INTERNO')
+            .eq('rentals.rental_type', rentalType)
             .eq('canastillas.status', 'EN_ALQUILER')
-            .then(res => {
-              if (!isSuperAdmin) {
-                // Si no es super_admin, necesitamos filtrar diferente
-                return res
-              }
-              return res
-            }),
-          supabase
-            .from('rental_items')
-            .select('*, rentals!inner(*), canastillas!inner(*)', { count: 'exact', head: true })
-            .eq('rentals.status', 'ACTIVO')
-            .eq('rentals.rental_type', 'EXTERNO')
-            .eq('canastillas.status', 'EN_ALQUILER'),
+
+          if (!isSuperAdmin) {
+            query = query.eq('canastillas.current_owner_id', user.id)
+          }
+
+          return query
+        }
+
+        const [internoResult, externoResult] = await Promise.all([
+          buildRentalCountQuery('INTERNO'),
+          buildRentalCountQuery('EXTERNO'),
         ])
 
         enAlquilerInterno = internoResult.count || 0
         enAlquilerExterno = externoResult.count || 0
 
-        // Si los conteos no coinciden, usar una aproximación simple
+        // Si los conteos no coinciden, usar proporción basada en datos reales
         if (enAlquilerInterno + enAlquilerExterno !== totalEnAlquiler) {
-          // Fallback: dividir proporcionalmente (asumiendo 50/50 si no hay datos)
-          enAlquilerInterno = Math.floor(totalEnAlquiler / 2)
-          enAlquilerExterno = totalEnAlquiler - enAlquilerInterno
+          const total = enAlquilerInterno + enAlquilerExterno
+          if (total > 0) {
+            // Escalar proporcionalmente al total real
+            const ratio = totalEnAlquiler / total
+            enAlquilerInterno = Math.round(enAlquilerInterno * ratio)
+            enAlquilerExterno = totalEnAlquiler - enAlquilerInterno
+          } else {
+            enAlquilerInterno = Math.floor(totalEnAlquiler / 2)
+            enAlquilerExterno = totalEnAlquiler - enAlquilerInterno
+          }
         }
       }
 
@@ -180,6 +191,7 @@ export function useDashboardStats() {
             enUsoInterno: 0,
             enLavado: 0,
             enReparacion: 0,
+            enRetorno: 0,
           }
         }
 
@@ -200,6 +212,9 @@ export function useDashboardStats() {
             break
           case 'EN_REPARACION':
             locationMap[locationName].enReparacion++
+            break
+          case 'EN_RETORNO':
+            locationMap[locationName].enRetorno++
             break
         }
       })
@@ -223,6 +238,7 @@ export function useDashboardStats() {
         enLavado,
         enUsoInterno,
         enReparacion,
+        enRetorno,
         ingresosEsteMes,
         proyeccionIngresos,
         locations,

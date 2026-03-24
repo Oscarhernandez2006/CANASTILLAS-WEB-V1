@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
-import { FirmaDigitalModal } from './FirmaDigitalModal'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSalePoints } from '@/hooks/useSalePoints'
 import { useRentalSettings } from '@/hooks/useRentalSettings'
-import type { Canastilla, SignatureData } from '@/types'
+import type { Canastilla } from '@/types'
 import { formatCurrency } from '@/utils/helpers'
-import { openRemisionPDF } from '@/utils/remisionGenerator'
 
 interface LoteGroup {
   key: string
@@ -30,7 +28,6 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [step, setStep] = useState<1 | 2>(1)
-  const [showFirmaModal, setShowFirmaModal] = useState(false)
   
   const { user } = useAuthStore()
   const { salePoints, loading: loadingSalePoints } = useSalePoints()
@@ -161,19 +158,13 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const totalCanastillasAlquilar = lotes.reduce((sum, lote) => sum + lote.cantidadAlquilar, 0)
   const totalCanastillasDisponibles = lotes.reduce((sum, lote) => sum + lote.totalDisponible, 0)
 
-  const handlePreSubmit = () => {
+  const handlePreSubmit = async () => {
     if (totalCanastillasAlquilar === 0) {
       setError('Selecciona al menos una canastilla')
       return
     }
     setError('')
-    setShowFirmaModal(true)
-  }
-
-  const handleFirmaConfirm = async (signatureData: SignatureData) => {
-    setShowFirmaModal(false)
     setLoading(true)
-    setError('')
 
     try {
       if (!user) throw new Error('Usuario no autenticado')
@@ -191,9 +182,16 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         : (settings?.daily_rate || 2)
 
       // 1. Generar número de remisión
-      const { data: remisionData, error: remisionError } = await supabase.rpc('generate_remision_number')
-      if (remisionError) throw remisionError
-      const remisionNumber = remisionData
+      let remisionNumber: string
+      try {
+        const { data: remisionData, error: remisionError } = await supabase.rpc('generate_remision_number')
+        if (remisionError) throw remisionError
+        remisionNumber = remisionData
+      } catch (rpcErr) {
+        // Fallback: generar número local si el RPC falla
+        remisionNumber = `RM-${Date.now().toString().slice(-8)}`
+        console.warn('RPC generate_remision_number falló, usando fallback:', rpcErr)
+      }
 
       // 2. Calcular días estimados
       let estimatedDays = 0
@@ -220,9 +218,6 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
           pending_items_count: canastillaIds.length,
           returned_items_count: 0,
           total_invoiced: 0,
-          firma_entrega_base64: signatureData.firma_entrega_base64,
-          firma_entrega_nombre: signatureData.firma_entrega_nombre,
-          firma_entrega_cedula: signatureData.firma_entrega_cedula,
         }])
         .select()
         .single()
@@ -254,42 +249,7 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         if (updateError) throw updateError
       }
 
-      // 6. Obtener rental_items con canastillas para el PDF
-      const PAGE_SIZE_ITEMS = 1000
-      let allRentalItems: any[] = []
-      let hasMoreItems = true
-      let offsetItems = 0
-
-      while (hasMoreItems) {
-        const { data: itemsBatch, error: itemsFetchError } = await supabase
-          .from('rental_items')
-          .select('*, canastilla:canastillas(*)')
-          .eq('rental_id', rental.id)
-          .range(offsetItems, offsetItems + PAGE_SIZE_ITEMS - 1)
-        if (itemsFetchError) throw itemsFetchError
-        if (itemsBatch && itemsBatch.length > 0) {
-          allRentalItems = [...allRentalItems, ...itemsBatch]
-          offsetItems += PAGE_SIZE_ITEMS
-          hasMoreItems = itemsBatch.length === PAGE_SIZE_ITEMS
-        } else {
-          hasMoreItems = false
-        }
-      }
-
-      // 7. Abrir PDF de remisión con firma de entrega
-      const rentalForPDF = {
-        ...rental,
-        sale_point: salePoints.find(sp => sp.id === formData.sale_point_id),
-        rental_items: allRentalItems,
-      }
-
-      try {
-        await openRemisionPDF(rentalForPDF, remisionNumber, signatureData)
-      } catch (pdfErr) {
-        console.error('Error al generar PDF:', pdfErr)
-      }
-
-      alert(`Alquiler creado. Pendiente firma del cliente.\nRemisión: ${remisionNumber}`)
+      alert(`Alquiler creado. Pendiente confirmación con firma de servicio.\nRemisión: ${remisionNumber}`)
       onSuccess()
       handleClose()
     } catch (err: any) {
@@ -634,17 +594,6 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         </div>
       </div>
 
-      {/* Modal de Firma Digital - Solo entrega (empleado) */}
-      <FirmaDigitalModal
-        isOpen={showFirmaModal}
-        onClose={() => setShowFirmaModal(false)}
-        onConfirm={handleFirmaConfirm}
-        loading={loading}
-        title="Firma de Entrega"
-        entregaLabel="ENTREGA"
-        mode="entrega-only"
-        confirmButtonText="Firmar y Crear Alquiler"
-      />
     </div>
   )
 }

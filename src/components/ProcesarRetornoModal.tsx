@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'
+import { SearchableUserSelect } from './SearchableUserSelect'
 import type { Rental, Canastilla, SignatureData } from '@/types'
 import { formatCurrency, formatDate } from '@/utils/helpers'
 import { useRentalReturns } from '@/hooks/useRentalReturns'
@@ -36,16 +37,29 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
   const [lotes, setLotes] = useState<LoteGroup[]>([])
   const [notes, setNotes] = useState('')
   const [showFirmaModal, setShowFirmaModal] = useState(false)
+  const [targetUserId, setTargetUserId] = useState('')
+  const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; first_name: string; last_name: string; email: string; role?: string }>>([])
 
   const { user } = useAuthStore()
   const { createReturn, calculateReturnAmount, calculateDaysSinceStart } = useRentalReturns()
 
-  // Inicializar los lotes cuando se abre el modal
+  // Inicializar los lotes y cargar usuarios cuando se abre el modal
   useEffect(() => {
     if (rental && isOpen) {
       loadRentalItems()
+      loadUsers()
+      if (user?.id) setTargetUserId(user.id)
     }
   }, [rental, isOpen])
+
+  const loadUsers = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, email, role')
+      .eq('is_active', true)
+      .order('first_name')
+    if (data) setAvailableUsers(data)
+  }
 
   const loadRentalItems = async () => {
     if (!rental) return
@@ -187,6 +201,10 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
       setError('Debe especificar al menos una canastilla para devolver')
       return
     }
+    if (!targetUserId) {
+      setError('Debe seleccionar un usuario para asignar las canastillas')
+      return
+    }
     setError('')
     setShowFirmaModal(true)
   }
@@ -220,7 +238,8 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
         daysCharged: actualDays,
         amount: totalAmount,
         notes: notes || undefined,
-        processedBy: user?.id || ''
+        processedBy: user?.id || '',
+        targetUserId: targetUserId || user?.id || ''
       })
 
       if (!result.success) {
@@ -488,6 +507,23 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
               />
             </div>
 
+            {/* Selección de usuario destino */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Asignar canastillas a (conductor/usuario)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Las canastillas quedarán en estado <span className="font-semibold text-amber-600">EN RETORNO</span> hasta que lleguen al Canastillero.
+              </p>
+              <SearchableUserSelect
+                users={availableUsers}
+                value={targetUserId}
+                onChange={setTargetUserId}
+                placeholder="Buscar usuario para asignar..."
+                required
+              />
+            </div>
+
             {/* Resumen de facturación */}
             {totalCanastillasDevolver > 0 && (
               <div className="border-t border-gray-200 pt-4">
@@ -588,17 +624,17 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
         </div>
       </div>
 
-      {/* Modal de Firma Digital - Ambas partes */}
+      {/* Modal de Firma Digital - Solo firma del facturador */}
       <FirmaDigitalModal
         isOpen={showFirmaModal}
         onClose={() => setShowFirmaModal(false)}
         onConfirm={handleFirmaConfirm}
         loading={loading}
-        title="Firmas de Devolución"
-        entregaLabel="CLIENTE"
-        recibeLabel="EMPRESA"
-        mode="both"
-        confirmButtonText="Firmar y Procesar Devolución"
+        title="Facturar Devolución"
+        entregaLabel="FACTURADO POR"
+        recibeLabel=""
+        mode="entrega-only"
+        confirmButtonText="Firmar y Facturar"
       />
     </div>
   )

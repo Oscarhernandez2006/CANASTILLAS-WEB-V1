@@ -10,6 +10,7 @@ interface CreateReturnParams {
   amount: number
   notes?: string
   processedBy: string
+  targetUserId: string
 }
 
 export function useRentalReturns() {
@@ -97,21 +98,22 @@ export function useRentalReturns() {
         if (itemsError) throw itemsError
       }
 
-      // 4. Actualizar estado de canastillas a DISPONIBLE (con batching)
+      // 4. Actualizar estado de canastillas a EN_RETORNO y asignar al usuario destino (con batching)
       for (let i = 0; i < params.canastillaIds.length; i += BATCH_SIZE) {
         const batch = params.canastillaIds.slice(i, i + BATCH_SIZE)
         const { error: canastillasError } = await supabase
           .from('canastillas')
-          .update({ status: 'DISPONIBLE' })
+          .update({ status: 'EN_RETORNO', current_owner_id: params.targetUserId })
           .in('id', batch)
         if (canastillasError) throw canastillasError
       }
 
-      // 5. Obtener el rental actual para calcular contadores
-      // Usar count exacto en lugar de cargar todos los items
+      // 5. Obtener el rental actual para calcular contadores EN EL MOMENTO DE ACTUALIZAR
+      // Re-leer justo antes de actualizar para minimizar ventana de race condition
       const { data: rental, error: rentalError } = await supabase
         .from('rentals')
         .select(`
+          status,
           pending_items_count,
           returned_items_count,
           total_invoiced
@@ -120,6 +122,11 @@ export function useRentalReturns() {
         .single()
 
       if (rentalError) throw rentalError
+
+      // Verificar que el alquiler no haya sido retornado ya
+      if (rental.status === 'RETORNADO') {
+        throw new Error('Este alquiler ya fue completamente retornado. No se pueden procesar más devoluciones.')
+      }
 
       // Obtener conteo exacto de rental_items si pending_items_count no está inicializado
       let totalItems = 0
@@ -140,7 +147,7 @@ export function useRentalReturns() {
       // 6. Determinar si el alquiler debe marcarse como RETORNADO
       const shouldClose = newPendingCount <= 0
 
-      // 7. Actualizar el rental
+      // 7. Actualizar el rental - usar condición de status para evitar race condition
       const rentalUpdate: any = {
         returned_items_count: newReturnedCount,
         pending_items_count: Math.max(0, newPendingCount),
@@ -155,12 +162,18 @@ export function useRentalReturns() {
         rentalUpdate.invoice_number = invoiceNumber
       }
 
-      const { error: updateError } = await supabase
+      const { data: updateResult, error: updateError } = await supabase
         .from('rentals')
         .update(rentalUpdate)
         .eq('id', params.rentalId)
+        .neq('status', 'RETORNADO')
+        .select('id')
 
       if (updateError) throw updateError
+
+      if (!updateResult || updateResult.length === 0) {
+        throw new Error('No se pudo actualizar el alquiler porque ya fue retornado completamente por otro usuario.')
+      }
 
       return {
         success: true,

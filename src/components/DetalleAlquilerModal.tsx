@@ -4,13 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/utils/helpers'
 import type { Rental, Canastilla } from '@/types'
 
-interface CanastillaConDetalle extends Canastilla {
-  lote?: {
-    id: string
-    size: string
-    color: string
-  }
-}
+type CanastillaConDetalle = Canastilla
 
 interface DetalleAlquilerModalProps {
   isOpen: boolean
@@ -46,27 +40,37 @@ export function DetalleAlquilerModal({
 
     setLoading(true)
     try {
-      // Obtener los IDs de canastillas del alquiler
-      const canastillaIds = rental.rental_items?.map(item => item.canastilla_id) || []
+      // Obtener rental_items directamente de la BD (el rental viene sin ellos)
+      const { data: rentalItems, error: itemsError } = await supabase
+        .from('rental_items')
+        .select('canastilla_id')
+        .eq('rental_id', rental.id)
+
+      if (itemsError) throw itemsError
+
+      const canastillaIds = (rentalItems || []).map(item => item.canastilla_id)
 
       if (canastillaIds.length === 0) {
         setCanastillas([])
         return
       }
 
-      // Obtener detalles de las canastillas
-      const { data, error } = await supabase
-        .from('canastillas')
-        .select(`
-          *,
-          lote:lotes(id, size, color)
-        `)
-        .in('id', canastillaIds)
-        .order('codigo')
+      // Obtener detalles de las canastillas (en lotes de 200 para evitar límites de URL)
+      let allCanastillas: CanastillaConDetalle[] = []
+      const BATCH_SIZE = 200
+      for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
+        const batch = canastillaIds.slice(i, i + BATCH_SIZE)
+        const { data, error } = await supabase
+          .from('canastillas')
+          .select('*')
+          .in('id', batch)
+          .order('codigo')
 
-      if (error) throw error
+        if (error) throw error
+        if (data) allCanastillas = [...allCanastillas, ...data]
+      }
 
-      setCanastillas(data || [])
+      setCanastillas(allCanastillas)
     } catch (error) {
       console.error('Error fetching canastillas:', error)
       setCanastillas([])
@@ -136,12 +140,12 @@ export function DetalleAlquilerModal({
         />
 
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-4xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-primary-600 px-6 py-4">
+          <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-white">
@@ -154,7 +158,7 @@ export function DetalleAlquilerModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-white hover:text-gray-200"
+                className="p-1 text-white hover:text-gray-200 rounded-lg"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -165,7 +169,7 @@ export function DetalleAlquilerModal({
 
           <div className="px-6 py-6">
             {/* Información del alquiler */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-xs text-gray-500 mb-1">Tipo de Alquiler</p>
                 <p className={`text-sm font-semibold ${rental.rental_type === 'INTERNO' ? 'text-purple-600' : 'text-pink-600'}`}>
@@ -191,7 +195,7 @@ export function DetalleAlquilerModal({
             {/* Información del cliente */}
             <div className="bg-blue-50 rounded-lg p-4 mb-6">
               <h4 className="text-sm font-semibold text-blue-900 mb-2">Información del Cliente</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 text-sm">
                 <div>
                   <p className="text-blue-700">Punto de venta:</p>
                   <p className="font-medium text-blue-900">{rental.sale_point?.name}</p>
@@ -364,7 +368,7 @@ export function DetalleAlquilerModal({
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-6 py-4 flex justify-end">
+          <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex justify-end">
             <Button variant="outline" onClick={onClose}>
               Cerrar
             </Button>

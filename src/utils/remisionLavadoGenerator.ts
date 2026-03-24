@@ -141,8 +141,8 @@ export const generateRemisionLavadoPDF = async (
     })
   }
 
-  // Firmas
-  drawSignatures(doc, signatureData, ['ENTREGA', 'RECIBE'])
+  // Firmas (pasar yPos para evitar solapamientos)
+  drawSignatures(doc, signatureData, ['ENTREGA', 'RECIBE'], yPos)
 
   // Footer
   drawFooter(doc, accent)

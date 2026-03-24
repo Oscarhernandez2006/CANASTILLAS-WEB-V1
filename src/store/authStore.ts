@@ -133,10 +133,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       const tempSession = sessionStorage.getItem('tempSession')
 
       // Si no tiene "Recordarme" y no hay sesión temporal, cerrar sesión
-      if (!rememberMe && !tempSession) {
+      // PERO no cerrar si estamos en /reset-password (viene del enlace de recovery)
+      const isResetPassword = window.location.pathname === '/reset-password'
+      if (!rememberMe && !tempSession && !isResetPassword) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
-          // Había sesión pero el usuario no marcó "Recordarme" y cerró el navegador
           await supabase.auth.signOut()
           set({ user: null, session: null, loading: false })
           return
@@ -147,6 +148,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data: { session } } = await supabase.auth.getSession()
 
       if (session?.user) {
+        // Si estamos en reset-password, solo guardar la sesión sin buscar datos de usuario
+        if (isResetPassword) {
+          set({ session, loading: false })
+          return
+        }
+
         // Obtener datos del usuario
         const { data: userData, error } = await supabase
           .from('users')
@@ -158,6 +165,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
         set({ user: userData, session })
       }
+
+      // Escuchar cambios de auth (para recovery tokens del email)
+      supabase.auth.onAuthStateChange(async (event, newSession) => {
+        if (event === 'PASSWORD_RECOVERY' && newSession) {
+          set({ session: newSession })
+        }
+      })
     } catch (error) {
       console.error('Error initializing auth:', error)
     } finally {

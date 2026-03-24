@@ -47,7 +47,7 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+    <header className="sticky top-0 z-[1000] bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3 sm:space-x-4">
           {/* Botón hamburguesa para móvil */}

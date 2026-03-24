@@ -100,6 +100,13 @@ export const generateFacturaDevolucionPDF = async (data: FacturaData, signatureD
 
   yPos = (doc as any).lastAutoTable.finalY + 10
 
+  // Verificar si hay espacio para resumen + total + firmas + footer (~100px)
+  const pageH = doc.internal.pageSize.height
+  if (yPos + 100 > pageH) {
+    doc.addPage()
+    yPos = 20
+  }
+
   // Resumen de facturación
   drawDetailLine(doc, 'Canastillas devueltas:', `${returnData.canastillas.length} unidades`, yPos)
   yPos += 6
@@ -110,10 +117,10 @@ export const generateFacturaDevolucionPDF = async (data: FacturaData, signatureD
   yPos += 10
 
   drawTotalBox(doc, 'TOTAL A PAGAR:', `$${returnData.amount.toLocaleString('es-CO')} COP`, yPos, accent)
+  yPos += 20
 
   // Notas
   if (returnData.notes) {
-    yPos += 20
     yPos = drawSectionTitle(doc, 'OBSERVACIONES', yPos, accent)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
@@ -127,7 +134,6 @@ export const generateFacturaDevolucionPDF = async (data: FacturaData, signatureD
 
   // Mensaje de devolución parcial
   if (isPartial) {
-    yPos += 20
     doc.setFillColor(254, 243, 199)
     doc.rect(15, yPos, 180, 12, 'F')
     doc.setFontSize(8)
@@ -135,10 +141,11 @@ export const generateFacturaDevolucionPDF = async (data: FacturaData, signatureD
     doc.setTextColor(180, 83, 9)
     doc.text('NOTA: Esta es una factura parcial. El alquiler permanece activo con', 20, yPos + 5)
     doc.text(`${pendingCount} canastillas pendientes de devolución.`, 20, yPos + 10)
+    yPos += 18
   }
 
-  // Firmas
-  drawSignatures(doc, signatureData, ['CLIENTE', 'EMPRESA'])
+  // Firma - solo quien factura (pasar yPos para evitar solapamientos)
+  drawSignatures(doc, signatureData, ['FACTURADO POR'], yPos)
 
   // Footer
   drawFooter(doc, accent)

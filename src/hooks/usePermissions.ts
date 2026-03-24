@@ -89,6 +89,18 @@ export function usePermissions() {
     return hasPermission('reportes.ver')
   }, [hasPermission])
 
+  const canAccessGeolocalizacion = useCallback((): boolean => {
+    return hasPermission('geolocalizacion.ver')
+  }, [hasPermission])
+
+  const canAccessFacturacion = useCallback((): boolean => {
+    return hasPermission('facturacion.ver')
+  }, [hasPermission])
+
+  const canAccessConsultarFacturacion = useCallback((): boolean => {
+    return hasPermission('consultar_facturacion.ver')
+  }, [hasPermission])
+
   // ========== COMPATIBILIDAD CON CÓDIGO EXISTENTE ==========
 
   // Para el Sidebar - acceso a canastillas o inventario
@@ -131,6 +143,9 @@ export function usePermissions() {
     canAccessClientes,
     canAccessUsuarios,
     canAccessReportes,
+    canAccessGeolocalizacion,
+    canAccessFacturacion,
+    canAccessConsultarFacturacion,
 
     // Compatibilidad
     canAccessCanastillasMenu,

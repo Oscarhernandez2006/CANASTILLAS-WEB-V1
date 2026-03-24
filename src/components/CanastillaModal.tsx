@@ -119,13 +119,13 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
 
         {/* Modal */}
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-2xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <form onSubmit={handleSubmit}>
             {/* Header */}
-            <div className="bg-primary-600 px-6 py-4">
+            <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">
                   {canastilla ? 'Editar Canastilla' : 'Nueva Canastilla'}
@@ -133,7 +133,7 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
                 <button
                   type="button"
                   onClick={onClose}
-                  className="text-white hover:text-gray-200"
+                  className="p-1 text-white hover:text-gray-200 rounded-lg"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -143,7 +143,7 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
             </div>
 
             {/* Body */}
-            <div className="px-6 py-6 space-y-6 max-h-[70vh] overflow-y-auto">
+            <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 max-h-[70vh] overflow-y-auto">
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg">
                   <p className="text-sm">{error}</p>
@@ -205,6 +205,7 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
                     <option value="DISPONIBLE">Disponible</option>
                     <option value="EN_USO_INTERNO">En Uso Interno</option>
                     <option value="EN_ALQUILER">En Alquiler</option>
+                    <option value="EN_RETORNO">En Retorno</option>
                     <option value="EN_LAVADO">En Lavado</option>
                     <option value="EN_REPARACION">En Reparación</option>
                     <option value="FUERA_SERVICIO">Fuera de Servicio</option>
@@ -324,7 +325,7 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
             </div>
 
             {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 flex items-center justify-end space-x-3">
+            <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-end space-x-3">
               <Button
                 type="button"
                 variant="outline"

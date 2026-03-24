@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'
 import { SearchableUserSelect } from './SearchableUserSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSalePoints } from '@/hooks/useSalePoints'
 import { openRemisionTraspasoPDF } from '@/utils/remisionTraspasoGenerator'
 import type { User, Canastilla, Transfer, SignatureData } from '@/types'
 
@@ -13,6 +14,9 @@ interface LoteGroup {
   color: string
   shape: string
   tipo_propiedad: string
+  statusGroup: 'DISPONIBLE' | 'EN_ALQUILER'
+  clienteAlquiler?: string
+  tipoAlquiler?: 'INTERNO' | 'EXTERNO'
   totalDisponible: number
   cantidadTraspasar: number
   canastillas: Canastilla[]
@@ -36,6 +40,7 @@ export function SolicitarTraspasoModal({
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [showFirmaModal, setShowFirmaModal] = useState(false)
   const { user: currentUser } = useAuthStore()
+  const { salePoints, loading: loadingSalePoints } = useSalePoints()
 
   const [lotes, setLotes] = useState<LoteGroup[]>([])
   const [canastillasRetenidas, setCanastillasRetenidas] = useState(0)
@@ -47,12 +52,23 @@ export function SolicitarTraspasoModal({
     notes: '',
   })
 
-  const [externalData, setExternalData] = useState({
-    nombre: '',
-    cedula: '',
-    telefono: '',
-    empresa: '',
-  })
+  // Estado para traspaso externo por cliente
+  const [selectedSalePointId, setSelectedSalePointId] = useState('')
+  const [salePointSearch, setSalePointSearch] = useState('')
+  const [salePointDropdownOpen, setSalePointDropdownOpen] = useState(false)
+  const salePointDropdownRef = useRef<HTMLDivElement>(null)
+  const salePointInputRef = useRef<HTMLInputElement>(null)
+
+  // Cerrar dropdown al click fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (salePointDropdownRef.current && !salePointDropdownRef.current.contains(e.target as Node)) {
+        setSalePointDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -95,7 +111,7 @@ export function SolicitarTraspasoModal({
         }
       }
 
-      // 2. Obtener canastillas disponibles con paginación
+      // 2. Obtener canastillas disponibles y en alquiler con paginación
       const PAGE_SIZE = 1000
       let disponibles: Canastilla[] = []
       let hasMore = true
@@ -106,7 +122,7 @@ export function SolicitarTraspasoModal({
           .from('canastillas')
           .select('*')
           .eq('current_owner_id', currentUser.id)
-          .eq('status', 'DISPONIBLE')
+          .in('status', ['DISPONIBLE', 'EN_ALQUILER'])
           .order('color', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
@@ -130,11 +146,87 @@ export function SolicitarTraspasoModal({
       const cantidadRetenidas = disponibles.length - canastillasLibres.length
       setCanastillasRetenidas(cantidadRetenidas)
 
-      // 4. Agrupar por size + color + shape + tipo_propiedad
+      // 3.5 Para canastillas EN_ALQUILER, obtener info del alquiler y cliente
+      const enAlquilerIds = canastillasLibres
+        .filter(c => c.status === 'EN_ALQUILER')
+        .map(c => c.id)
+
+      // Mapa: canastilla_id → { clienteName, rentalType }
+      const rentalInfoMap: Record<string, { clienteName: string; rentalType: 'INTERNO' | 'EXTERNO' }> = {}
+
+      if (enAlquilerIds.length > 0) {
+        const BATCH_RENTAL = 500
+        for (let i = 0; i < enAlquilerIds.length; i += BATCH_RENTAL) {
+          const batchIds = enAlquilerIds.slice(i, i + BATCH_RENTAL)
+          const { data: rentalItems } = await supabase
+            .from('rental_items')
+            .select(`
+              canastilla_id,
+              rental:rentals!inner(
+                id,
+                rental_type,
+                status,
+                sale_point:sale_points(name)
+              )
+            `)
+            .in('canastilla_id', batchIds)
+            .eq('rentals.status', 'ACTIVO')
+
+          if (rentalItems) {
+            for (const item of rentalItems) {
+              const rental = item.rental as any
+              if (rental) {
+                rentalInfoMap[item.canastilla_id] = {
+                  clienteName: rental.sale_point?.name || 'Cliente desconocido',
+                  rentalType: rental.rental_type || 'INTERNO',
+                }
+              }
+            }
+          }
+        }
+
+        // Intentar también con PENDIENTE_FIRMA para canastillas que aún no se confirmaron
+        const sinInfo = enAlquilerIds.filter(id => !rentalInfoMap[id])
+        if (sinInfo.length > 0) {
+          for (let i = 0; i < sinInfo.length; i += BATCH_RENTAL) {
+            const batchIds = sinInfo.slice(i, i + BATCH_RENTAL)
+            const { data: rentalItems } = await supabase
+              .from('rental_items')
+              .select(`
+                canastilla_id,
+                rental:rentals!inner(
+                  id,
+                  rental_type,
+                  status,
+                  sale_point:sale_points(name)
+                )
+              `)
+              .in('canastilla_id', batchIds)
+              .eq('rentals.status', 'PENDIENTE_FIRMA')
+
+            if (rentalItems) {
+              for (const item of rentalItems) {
+                const rental = item.rental as any
+                if (rental && !rentalInfoMap[item.canastilla_id]) {
+                  rentalInfoMap[item.canastilla_id] = {
+                    clienteName: rental.sale_point?.name || 'Cliente desconocido',
+                    rentalType: rental.rental_type || 'INTERNO',
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 4. Agrupar por size + color + shape + tipo_propiedad + status + cliente
       const grouped: Record<string, LoteGroup> = {}
 
       for (const canastilla of canastillasLibres) {
-        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.tipo_propiedad || 'PROPIA'}`
+        const statusGroup = canastilla.status === 'EN_ALQUILER' ? 'EN_ALQUILER' : 'DISPONIBLE'
+        const rentalInfo = rentalInfoMap[canastilla.id]
+        const clienteKey = statusGroup === 'EN_ALQUILER' ? (rentalInfo?.clienteName || 'Sin cliente') : ''
+        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.tipo_propiedad || 'PROPIA'}-${statusGroup}-${clienteKey}`
 
         if (!grouped[key]) {
           grouped[key] = {
@@ -143,6 +235,9 @@ export function SolicitarTraspasoModal({
             color: canastilla.color,
             shape: canastilla.shape || '',
             tipo_propiedad: canastilla.tipo_propiedad || 'PROPIA',
+            statusGroup: statusGroup as 'DISPONIBLE' | 'EN_ALQUILER',
+            clienteAlquiler: statusGroup === 'EN_ALQUILER' ? clienteKey : undefined,
+            tipoAlquiler: statusGroup === 'EN_ALQUILER' ? rentalInfo?.rentalType : undefined,
             totalDisponible: 0,
             cantidadTraspasar: 0,
             canastillas: []
@@ -153,7 +248,13 @@ export function SolicitarTraspasoModal({
         grouped[key].canastillas.push(canastilla)
       }
 
-      setLotes(Object.values(grouped))
+      // Ordenar: primero DISPONIBLE, luego EN_ALQUILER
+      const sortedLotes = Object.values(grouped).sort((a, b) => {
+        if (a.statusGroup === b.statusGroup) return 0
+        return a.statusGroup === 'DISPONIBLE' ? -1 : 1
+      })
+
+      setLotes(sortedLotes)
     } catch (err: any) {
       console.error('Error fetching canastillas:', err)
       setError('Error al cargar las canastillas: ' + err.message)
@@ -228,8 +329,7 @@ export function SolicitarTraspasoModal({
     if (!currentUser) { setError('Usuario no autenticado'); return }
     if (tipoTraspaso === 'normal' && !formData.to_user_id) { setError('Selecciona un usuario destino'); return }
     if (tipoTraspaso === 'externo') {
-      if (!externalData.nombre.trim()) { setError('Ingresa el nombre del destinatario externo'); return }
-      if (!externalData.cedula.trim()) { setError('Ingresa la cédula del destinatario externo'); return }
+      if (!selectedSalePointId) { setError('Selecciona un cliente o punto de venta'); return }
     }
     if (totalCanastillasTraspasar === 0) { setError('Selecciona al menos una canastilla'); return }
 
@@ -257,38 +357,20 @@ export function SolicitarTraspasoModal({
       const now = new Date().toISOString()
       let targetUserId = formData.to_user_id
       const isExternalTransfer = tipoTraspaso === 'externo'
+      const selectedClient = isExternalTransfer ? salePoints.find(sp => sp.id === selectedSalePointId) : null
 
-      // Para traspasos externos, crear usuario cliente inactivo
+      // Para traspasos externos, buscar o crear usuario cliente inactivo
       if (isExternalTransfer) {
-        // Buscar si ya existe un usuario con esa cédula
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('phone', externalData.cedula)
-          .eq('role', 'client')
-          .maybeSingle()
+        if (!selectedClient) throw new Error('Cliente no encontrado')
+        const { data: externalUserId, error: userError } = await supabase
+          .rpc('get_or_create_external_user', {
+            p_cedula: selectedClient.identification || selectedClient.code,
+            p_nombre: selectedClient.contact_name || selectedClient.name,
+            p_empresa: selectedClient.name || null,
+          })
 
-        if (existingUser) {
-          targetUserId = existingUser.id
-        } else {
-          // Crear usuario externo inactivo
-          const { data: newUser, error: userError } = await supabase
-            .from('users')
-            .insert({
-              email: `externo_${externalData.cedula}@canastilla.local`,
-              first_name: externalData.nombre,
-              last_name: externalData.empresa || 'Externo',
-              phone: externalData.cedula,
-              role: 'client',
-              is_active: false,
-              department: externalData.empresa || null,
-            })
-            .select()
-            .single()
-
-          if (userError) throw new Error('Error al crear destinatario externo: ' + userError.message)
-          targetUserId = newUser.id
-        }
+        if (userError) throw new Error('Error al crear destinatario externo: ' + userError.message)
+        targetUserId = externalUserId
       }
 
       // Verificar si el usuario destino es personal de lavado
@@ -313,16 +395,17 @@ export function SolicitarTraspasoModal({
           from_user_id: currentUser.id,
           to_user_id: targetUserId,
           status: isExternalTransfer ? 'ACEPTADO' : 'PENDIENTE',
-          reason: isWashingTransfer ? 'Envío a lavado' : (isExternalTransfer ? `Traspaso externo a ${externalData.nombre}` : formData.reason),
+          reason: isWashingTransfer ? 'Envío a lavado' : (isExternalTransfer ? `Traspaso externo a ${selectedClient?.name || 'Cliente'}` : formData.reason),
           notes: formData.notes,
           remision_number: remisionNumber,
           remision_generated_at: now,
           is_washing_transfer: isWashingTransfer,
           is_external_transfer: isExternalTransfer,
-          external_recipient_name: isExternalTransfer ? externalData.nombre : null,
-          external_recipient_cedula: isExternalTransfer ? externalData.cedula : null,
-          external_recipient_phone: isExternalTransfer ? externalData.telefono : null,
-          external_recipient_empresa: isExternalTransfer ? externalData.empresa : null,
+          external_recipient_name: isExternalTransfer ? (selectedClient?.contact_name || selectedClient?.name) : null,
+          external_recipient_cedula: isExternalTransfer ? (selectedClient?.identification || selectedClient?.code) : null,
+          external_recipient_phone: isExternalTransfer ? selectedClient?.contact_phone : null,
+          external_recipient_empresa: isExternalTransfer ? selectedClient?.name : null,
+          sale_point_id: isExternalTransfer ? selectedSalePointId : null,
           responded_at: isExternalTransfer ? now : null,
           firma_entrega_base64: signatureData.firma_entrega_base64,
           firma_entrega_nombre: signatureData.firma_entrega_nombre,
@@ -377,14 +460,46 @@ export function SolicitarTraspasoModal({
 
       // Para traspasos externos, mover canastillas inmediatamente (ya que se auto-aceptan)
       if (isExternalTransfer) {
+        // Separar canastillas por status para mantener EN_ALQUILER
+        const canastillasEnAlquiler: string[] = []
+        const canastillasOtras: string[] = []
+
+        for (const lote of lotes) {
+          if (lote.cantidadTraspasar > 0) {
+            const seleccionadas = lote.canastillas.slice(0, lote.cantidadTraspasar)
+            for (const c of seleccionadas) {
+              if (c.status === 'EN_ALQUILER') {
+                canastillasEnAlquiler.push(c.id)
+              } else {
+                canastillasOtras.push(c.id)
+              }
+            }
+          }
+        }
+
         const BATCH_UPDATE = 500
-        for (let i = 0; i < canastillaIds.length; i += BATCH_UPDATE) {
-          const batch = canastillaIds.slice(i, i + BATCH_UPDATE)
+
+        // Canastillas normales → EN_USO_INTERNO
+        for (let i = 0; i < canastillasOtras.length; i += BATCH_UPDATE) {
+          const batch = canastillasOtras.slice(i, i + BATCH_UPDATE)
           const { error: updateError } = await supabase
             .from('canastillas')
             .update({
               current_owner_id: targetUserId,
               status: 'EN_USO_INTERNO',
+            })
+            .in('id', batch)
+
+          if (updateError) throw updateError
+        }
+
+        // Canastillas EN_ALQUILER → mantener status
+        for (let i = 0; i < canastillasEnAlquiler.length; i += BATCH_UPDATE) {
+          const batch = canastillasEnAlquiler.slice(i, i + BATCH_UPDATE)
+          const { error: updateError } = await supabase
+            .from('canastillas')
+            .update({
+              current_owner_id: targetUserId,
             })
             .in('id', batch)
 
@@ -445,7 +560,7 @@ export function SolicitarTraspasoModal({
       await openRemisionTraspasoPDF(fullTransfer as unknown as Transfer, signatureData)
 
       const successMessage = isExternalTransfer
-        ? `Traspaso externo registrado exitosamente.\n\nDestinatario: ${externalData.nombre}\nRemisión: ${remisionNumber}\nCanastillas: ${canastillaIds.length}`
+        ? `Traspaso externo registrado exitosamente.\n\nCliente: ${selectedClient?.name || ''}\nRemisión: ${remisionNumber}\nCanastillas: ${canastillaIds.length}`
         : isWashingTransfer
         ? `Canastillas enviadas a lavado exitosamente.\n\nRemisión de Lavado: ${remisionNumber}`
         : `Solicitud de traspaso creada exitosamente.\n\nRemisión: ${remisionNumber}`
@@ -462,7 +577,9 @@ export function SolicitarTraspasoModal({
 
   const handleClose = () => {
     setFormData({ to_user_id: '', reason: '', notes: '' })
-    setExternalData({ nombre: '', cedula: '', telefono: '', empresa: '' })
+    setSelectedSalePointId('')
+    setSalePointSearch('')
+    setSalePointDropdownOpen(false)
     setTipoTraspaso('normal')
     setLotes([])
     setError('')
@@ -474,6 +591,20 @@ export function SolicitarTraspasoModal({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Overlay de procesamiento */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm mx-4">
+            <div className="relative">
+              <div className="w-14 h-14 border-4 border-primary-200 rounded-full"></div>
+              <div className="w-14 h-14 border-4 border-primary-600 border-t-transparent rounded-full animate-spin absolute inset-0"></div>
+            </div>
+            <p className="text-gray-800 font-semibold text-lg text-center">Creando traspaso...</p>
+            <p className="text-gray-500 text-sm text-center">Por favor espera, no cierres esta página</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         <div
           className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
@@ -567,61 +698,175 @@ export function SolicitarTraspasoModal({
                 </div>
               </div>
 
-              {/* Formulario para destinatario externo */}
+              {/* Formulario para destinatario externo - Selector de Cliente */}
               {tipoTraspaso === 'externo' && (
-                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
-                  <h4 className="text-sm font-medium text-orange-800 flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Datos del Destinatario Externo
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Nombre completo *</label>
-                      <input
-                        type="text"
-                        value={externalData.nombre}
-                        onChange={(e) => setExternalData({ ...externalData, nombre: e.target.value })}
-                        placeholder="Nombre del destinatario"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Cédula / NIT *</label>
-                      <input
-                        type="text"
-                        value={externalData.cedula}
-                        onChange={(e) => setExternalData({ ...externalData, cedula: e.target.value })}
-                        placeholder="Número de identificación"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
-                      <input
-                        type="text"
-                        value={externalData.telefono}
-                        onChange={(e) => setExternalData({ ...externalData, telefono: e.target.value })}
-                        placeholder="Teléfono de contacto"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
-                      <input
-                        type="text"
-                        value={externalData.empresa}
-                        onChange={(e) => setExternalData({ ...externalData, empresa: e.target.value })}
-                        placeholder="Nombre de la empresa"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
+                <div className="space-y-4">
+                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
+                    <h4 className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      Clientes o Puntos de Venta
+                    </h4>
+                    {loadingSalePoints ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
+                        <span className="ml-2 text-sm text-gray-600">Cargando clientes...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative" ref={salePointDropdownRef}>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Cliente / Punto de Venta *</label>
+                          {selectedSalePointId && !salePointDropdownOpen ? (
+                            (() => {
+                              const sel = salePoints.find(sp => sp.id === selectedSalePointId)
+                              if (!sel) return null
+                              return (
+                                <div
+                                  className="flex items-center justify-between w-full px-3 py-2 border border-gray-300 rounded-lg bg-white cursor-pointer hover:border-orange-400 transition-colors"
+                                  onClick={() => {
+                                    setSalePointDropdownOpen(true)
+                                    setTimeout(() => salePointInputRef.current?.focus(), 0)
+                                  }}
+                                >
+                                  <div className="flex items-center space-x-2 min-w-0">
+                                    <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-sm font-semibold text-orange-700">
+                                        {sel.name?.charAt(0).toUpperCase()}
+                                      </span>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-gray-900 truncate">
+                                        {sel.name}
+                                        <span className="ml-1 text-xs text-gray-400">
+                                          {sel.client_type === 'CLIENTE_EXTERNO' ? '(Externo)' : '(Punto de Venta)'}
+                                        </span>
+                                      </p>
+                                      <p className="text-xs text-gray-500 truncate">{sel.contact_name} {sel.identification ? `· ${sel.identification}` : ''}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setSelectedSalePointId('')
+                                      setSalePointSearch('')
+                                      setSalePointDropdownOpen(false)
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 flex-shrink-0 ml-2"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              )
+                            })()
+                          ) : (
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                              </div>
+                              <input
+                                ref={salePointInputRef}
+                                type="text"
+                                value={salePointSearch}
+                                onChange={(e) => {
+                                  setSalePointSearch(e.target.value)
+                                  setSalePointDropdownOpen(true)
+                                }}
+                                onFocus={() => setSalePointDropdownOpen(true)}
+                                placeholder="Buscar por nombre, contacto, NIT..."
+                                className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              />
+                            </div>
+                          )}
+
+                          {salePointDropdownOpen && (
+                            <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                              {(() => {
+                                const searchLower = salePointSearch.toLowerCase()
+                                const filtered = salePoints.filter(sp => sp.is_active && (
+                                  !salePointSearch ||
+                                  sp.name.toLowerCase().includes(searchLower) ||
+                                  (sp.contact_name && sp.contact_name.toLowerCase().includes(searchLower)) ||
+                                  (sp.identification && sp.identification.toLowerCase().includes(searchLower)) ||
+                                  (sp.code && sp.code.toLowerCase().includes(searchLower))
+                                ))
+                                const externos = filtered.filter(sp => sp.client_type === 'CLIENTE_EXTERNO')
+                                const puntos = filtered.filter(sp => sp.client_type === 'PUNTO_VENTA')
+
+                                if (filtered.length === 0) {
+                                  return <li className="px-4 py-3 text-sm text-gray-500 text-center">No se encontraron resultados</li>
+                                }
+
+                                return (
+                                  <>
+                                    {externos.length > 0 && (
+                                      <>
+                                        <li className="px-3 py-1.5 text-xs font-semibold text-orange-600 bg-orange-50 sticky top-0">Clientes Externos</li>
+                                        {externos.map(sp => (
+                                          <li
+                                            key={sp.id}
+                                            onClick={() => {
+                                              setSelectedSalePointId(sp.id)
+                                              setSalePointSearch('')
+                                              setSalePointDropdownOpen(false)
+                                            }}
+                                            className="px-4 py-2 cursor-pointer hover:bg-orange-50 transition-colors"
+                                          >
+                                            <p className="text-sm font-medium text-gray-900">{sp.name}</p>
+                                            <p className="text-xs text-gray-500">{sp.contact_name} {sp.identification ? `· ${sp.identification}` : ''}</p>
+                                          </li>
+                                        ))}
+                                      </>
+                                    )}
+                                    {puntos.length > 0 && (
+                                      <>
+                                        <li className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 sticky top-0">Puntos de Venta</li>
+                                        {puntos.map(sp => (
+                                          <li
+                                            key={sp.id}
+                                            onClick={() => {
+                                              setSelectedSalePointId(sp.id)
+                                              setSalePointSearch('')
+                                              setSalePointDropdownOpen(false)
+                                            }}
+                                            className="px-4 py-2 cursor-pointer hover:bg-blue-50 transition-colors"
+                                          >
+                                            <p className="text-sm font-medium text-gray-900">{sp.name}</p>
+                                            <p className="text-xs text-gray-500">{sp.contact_name}</p>
+                                          </li>
+                                        ))}
+                                      </>
+                                    )}
+                                  </>
+                                )
+                              })()}
+                            </ul>
+                          )}
+                        </div>
+                        {/* Mostrar info del cliente seleccionado */}
+                        {selectedSalePointId && (() => {
+                          const client = salePoints.find(sp => sp.id === selectedSalePointId)
+                          if (!client) return null
+                          return (
+                            <div className="p-3 bg-white rounded-lg border border-orange-100 text-sm space-y-1">
+                              <p className="font-medium text-gray-900">{client.name}</p>
+                              <p className="text-gray-600">Contacto: {client.contact_name} · {client.contact_phone}</p>
+                              {client.address && <p className="text-gray-500">{client.address}, {client.city}</p>}
+                              {client.identification && <p className="text-gray-500">NIT/CC: {client.identification}</p>}
+                            </div>
+                          )
+                        })()}
+                      </>
+                    )}
                   </div>
+
                   <p className="text-xs text-orange-600">
-                    El traspaso externo se acepta automáticamente. Podrás registrar la devolución desde el historial.
+                    El traspaso externo se acepta automáticamente. Se requerirá firma del conductor y del cliente.
                   </p>
                 </div>
               )}
@@ -706,7 +951,7 @@ export function SolicitarTraspasoModal({
                   </div>
                 ) : lotes.length === 0 ? (
                   <div className="flex items-center justify-center h-32 border border-gray-200 rounded-lg bg-gray-50">
-                    <p className="text-sm text-gray-500">No tienes canastillas disponibles para traspasar</p>
+                    <p className="text-sm text-gray-500">No tienes canastillas disponibles o en alquiler para traspasar</p>
                   </div>
                 ) : (
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -737,6 +982,22 @@ export function SolicitarTraspasoModal({
                                   {lote.tipo_propiedad === 'PROPIA' ? 'Propia' : 'Alquilada'}
                                 </span>
                               </p>
+                              {lote.statusGroup === 'EN_ALQUILER' && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                    lote.tipoAlquiler === 'EXTERNO'
+                                      ? 'bg-pink-100 text-pink-700'
+                                      : 'bg-purple-100 text-purple-700'
+                                  }`}>
+                                    Alq. {lote.tipoAlquiler === 'EXTERNO' ? 'Externo' : 'Interno'}
+                                  </span>
+                                  {lote.clienteAlquiler && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 max-w-[140px] truncate" title={lote.clienteAlquiler}>
+                                      📋 {lote.clienteAlquiler}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="col-span-2 text-center">
@@ -837,7 +1098,7 @@ export function SolicitarTraspasoModal({
               <Button
                 type="submit"
                 loading={loading}
-                disabled={loading || loadingLotes || totalCanastillasTraspasar === 0 || (tipoTraspaso === 'normal' && !formData.to_user_id) || (tipoTraspaso === 'externo' && (!externalData.nombre.trim() || !externalData.cedula.trim()))}
+                disabled={loading || loadingLotes || totalCanastillasTraspasar === 0 || (tipoTraspaso === 'normal' && !formData.to_user_id) || (tipoTraspaso === 'externo' && !selectedSalePointId)}
                 className="w-full sm:w-auto text-sm order-1 sm:order-2"
               >
                 {loading ? 'Enviando...' : `Enviar (${totalCanastillasTraspasar})`}
@@ -847,13 +1108,14 @@ export function SolicitarTraspasoModal({
         </div>
       </div>
 
+      {/* Modal de Confirmación de Usuario de Retorno */}
       {/* Modal de Firma Digital - Entrega only */}
       <FirmaDigitalModal
         isOpen={showFirmaModal}
         onClose={() => setShowFirmaModal(false)}
         onConfirm={handleFirmaConfirm}
         loading={loading}
-        title={tipoTraspaso === 'externo' ? 'Firmas de Entrega y Recepción' : 'Firma de Entrega'}
+        title={tipoTraspaso === 'externo' ? 'Firmas de Remisión de Entrega' : 'Firma de Entrega'}
         entregaLabel="ENTREGA"
         recibeLabel="RECIBE"
         mode={tipoTraspaso === 'externo' ? 'both' : 'entrega-only'}

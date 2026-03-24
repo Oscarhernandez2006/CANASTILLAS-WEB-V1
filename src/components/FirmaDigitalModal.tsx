@@ -69,9 +69,9 @@ export function FirmaDigitalModal({
   const showEntregaPreview = mode === 'recibe-only' && prefillEntrega
 
   const resizeCanvas = useCallback((canvas: HTMLCanvasElement, container: HTMLDivElement) => {
-    const ratio = Math.max(window.devicePixelRatio || 1, 1)
+    const ratio = Math.min(window.devicePixelRatio || 1, 2)
     const width = container.offsetWidth
-    const height = 160
+    const height = 150
     canvas.width = width * ratio
     canvas.height = height * ratio
     canvas.style.width = `${width}px`
@@ -246,10 +246,10 @@ export function FirmaDigitalModal({
 
     const signatureData: SignatureData = {
       firma_entrega_base64: showEntregaPad
-        ? padEntregaRef.current!.toDataURL('image/png')
+        ? padEntregaRef.current!.toDataURL('image/jpeg', 0.5)
         : (prefillEntrega?.firma_base64 || ''),
       firma_recibe_base64: showRecibePad
-        ? padRecibeRef.current!.toDataURL('image/png')
+        ? padRecibeRef.current!.toDataURL('image/jpeg', 0.5)
         : '',
       firma_entrega_nombre: showEntregaPad
         ? entregaNombre.trim()
@@ -265,7 +265,7 @@ export function FirmaDigitalModal({
         : '',
       // Firma tercero (solo si se activó)
       firma_tercero_base64: showTercero
-        ? (prefillTercero ? prefillTercero.firma_base64 : padTerceroRef.current?.toDataURL('image/png'))
+        ? (prefillTercero ? prefillTercero.firma_base64 : padTerceroRef.current?.toDataURL('image/jpeg', 0.5))
         : undefined,
       firma_tercero_nombre: showTercero
         ? (prefillTercero ? prefillTercero.nombre : terceroNombre.trim())

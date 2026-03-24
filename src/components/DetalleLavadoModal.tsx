@@ -39,11 +39,11 @@ export function DetalleLavadoModal({
         />
 
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-2xl mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="bg-gray-800 px-6 py-4">
+          <div className="bg-gray-800 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-white/20 rounded-lg">
@@ -58,7 +58,7 @@ export function DetalleLavadoModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-white hover:text-gray-200"
+                className="p-1 text-white hover:text-gray-200 rounded-lg"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -67,7 +67,7 @@ export function DetalleLavadoModal({
             </div>
           </div>
 
-          <div className="px-6 py-6 space-y-6 max-h-[70vh] overflow-y-auto">
+          <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 max-h-[70vh] overflow-y-auto">
             {/* Estado y remisiones */}
             <div className="flex items-center justify-between">
               <span className={`px-4 py-2 rounded-full text-sm font-medium ${status.bg} ${status.color}`}>
@@ -82,7 +82,7 @@ export function DetalleLavadoModal({
             </div>
 
             {/* Información de usuarios */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-gray-500 mb-2">Enviado por</h4>
                 <p className="font-medium text-gray-900">
@@ -224,7 +224,7 @@ export function DetalleLavadoModal({
             )}
           </div>
 
-          <div className="bg-gray-50 px-6 py-4 flex items-center justify-end">
+          <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-end">
             <Button onClick={onClose}>
               Cerrar
             </Button>

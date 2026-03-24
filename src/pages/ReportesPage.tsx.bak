@@ -175,7 +175,7 @@ export function ReportesPage() {
         {
           id: 'inventario',
           name: 'Inventario General',
-          description: 'Estado completo: por estado, tamaño/color, propietario, condición e indicadores clave (5 hojas)',
+          description: 'Estado actual de todas las canastillas: ubicación, propietario, condición y estado',
           icon: (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -187,7 +187,7 @@ export function ReportesPage() {
         {
           id: 'traspasos',
           name: 'Traspasos',
-          description: 'Detalle completo, análisis por tipo, flujo entre usuarios y traspasos externos (4 hojas)',
+          description: 'Historial de movimientos entre sedes, usuarios y terceros con estados y remisiones',
           icon: (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -224,7 +224,7 @@ export function ReportesPage() {
         {
           id: 'alquileres',
           name: 'Alquileres',
-          description: 'Detalle completo, análisis por cliente, distribución tipo/estado y devoluciones (4 hojas)',
+          description: 'Detalle de todos los alquileres: clientes, montos, fechas, días y estados',
           icon: (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -236,7 +236,7 @@ export function ReportesPage() {
         {
           id: 'ingresos',
           name: 'Análisis de Ingresos',
-          description: 'Ingresos diarios, por cliente, interno vs externo y facturas mensuales (4 hojas)',
+          description: 'Desglose diario de ingresos con totales, promedios y tendencias',
           icon: (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -438,7 +438,7 @@ export function ReportesPage() {
     while (true) {
       const { data, error } = await supabase
         .from('canastillas')
-        .select(`*, current_owner:users!canastillas_current_owner_id_fkey(first_name, last_name, email, role)`)
+        .select(`*, current_owner:users!canastillas_current_owner_id_fkey(first_name, last_name)`)
         .range(page * pageSize, (page + 1) * pageSize - 1)
         .order('codigo')
       if (error) throw error
@@ -449,251 +449,101 @@ export function ReportesPage() {
     }
 
     const statusLabels: Record<string, string> = {
-      DISPONIBLE: 'Disponible', EN_ALQUILER: 'En Alquiler', EN_LAVADO: 'En Lavado',
-      EN_TRANSITO: 'En Tránsito', EN_RETORNO: 'En Retorno', EN_REPARACION: 'En Reparación',
-      FUERA_SERVICIO: 'Fuera de Servicio', EXTRAVIADA: 'Extraviada', DADA_DE_BAJA: 'Dada de Baja',
+      DISPONIBLE: 'Disponible',
+      EN_ALQUILER: 'En Alquiler',
+      EN_LAVADO: 'En Lavado',
+      EN_TRANSITO: 'En Tránsito',
+      DANADA: 'Dañada',
+      PERDIDA: 'Perdida',
+      EN_MANTENIMIENTO: 'En Mantenimiento',
     }
 
-    const wb = XLSX.utils.book_new()
+    const headers = ['#', 'Código', 'Tamaño', 'Color', 'Estado', 'Condición', 'Tipo Propiedad', 'Ubicación', 'Área', 'Propietario', 'Fecha Registro']
 
-    // === HOJA 1: INVENTARIO DETALLADO ===
-    const h1 = ['#', 'Código', 'Tamaño', 'Color', 'Forma', 'Estado', 'Condición', 'Tipo Propiedad', 'Ubicación', 'Área', 'Propietario Actual', 'Email Propietario', 'Rol Propietario', 'Fecha Registro', 'Antigüedad (días)']
-    const d1 = allCanastillas.map((c, i) => {
-      const dias = Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000)
-      return [
-        i + 1, c.codigo, c.size, c.color, c.shape || '-',
-        statusLabels[c.status] || c.status,
-        c.condition === 'BUENA' ? 'Buena' : c.condition === 'REGULAR' ? 'Regular' : c.condition === 'MALA' ? 'Mala' : (c.condition || '-'),
-        c.tipo_propiedad === 'PROPIA' ? 'Propia' : 'Alquilada',
-        c.current_location || '-', c.current_area || '-',
-        c.current_owner ? `${c.current_owner.first_name} ${c.current_owner.last_name}` : 'Sin asignar',
-        c.current_owner?.email || '-',
-        c.current_owner?.role || '-',
-        formatDateDisplay(c.created_at), dias
-      ]
-    })
-    const ws1Data = buildSheetData('Inventario Detallado de Canastillas', h1, d1)
-    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
-    ws1['!cols'] = [5, 12, 10, 10, 10, 14, 12, 14, 16, 12, 22, 22, 12, 13, 14].map(w => ({ wch: w }))
-    applyMerges(ws1, h1.length, d1.length)
-    XLSX.utils.book_append_sheet(wb, ws1, 'Inventario Detallado')
+    const reportData = allCanastillas.map((c, i) => [
+      i + 1,
+      c.codigo,
+      c.size,
+      c.color,
+      statusLabels[c.status] || c.status,
+      c.condition === 'BUENA' ? 'Buena' : c.condition === 'REGULAR' ? 'Regular' : c.condition === 'MALA' ? 'Mala' : c.condition,
+      c.tipo_propiedad === 'PROPIA' ? 'Propia' : 'Alquilada',
+      c.current_location || '-',
+      c.current_area || '-',
+      c.current_owner ? `${c.current_owner.first_name} ${c.current_owner.last_name}` : 'Sin asignar',
+      formatDateDisplay(c.created_at)
+    ])
 
-    // === HOJA 2: RESUMEN POR ESTADO ===
     const statusCount: Record<string, number> = {}
-    allCanastillas.forEach(c => { const l = statusLabels[c.status] || c.status; statusCount[l] = (statusCount[l] || 0) + 1 })
-    const h2 = ['Estado', 'Cantidad', '% del Total', 'Observación']
-    const total = allCanastillas.length
-    const d2 = Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([estado, cant]) => {
-      const pct = total > 0 ? ((cant / total) * 100).toFixed(1) + '%' : '0%'
-      let obs = ''
-      if (estado === 'Disponible') obs = 'Listas para operación'
-      else if (estado === 'En Alquiler') obs = 'Generando ingresos'
-      else if (estado === 'Extraviada' || estado === 'Fuera de Servicio') obs = '⚠️ Requiere atención'
-      return [estado, cant, pct, obs]
-    })
-    d2.push(['TOTAL', total, '100%', ''])
-    const ws2Data = buildSheetData('Distribución por Estado', h2, d2, [
-      { label: 'Total Canastillas', value: total },
-      { label: 'Disponibles', value: statusCount['Disponible'] || 0 },
-      { label: 'En operación (alquiler+tránsito+lavado)', value: (statusCount['En Alquiler'] || 0) + (statusCount['En Tránsito'] || 0) + (statusCount['En Lavado'] || 0) },
-      { label: 'Tasa de utilización', value: total > 0 ? ((((statusCount['En Alquiler'] || 0)) / total) * 100).toFixed(1) + '%' : '0%' },
-      { label: 'Canastillas con problemas', value: (statusCount['Extraviada'] || 0) + (statusCount['Fuera de Servicio'] || 0) + (statusCount['Dada de Baja'] || 0) },
-    ])
-    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
-    ws2['!cols'] = [25, 12, 12, 30].map(w => ({ wch: w }))
-    applyMerges(ws2, h2.length, d2.length)
-    XLSX.utils.book_append_sheet(wb, ws2, 'Por Estado')
-
-    // === HOJA 3: RESUMEN POR TAMAÑO Y COLOR ===
-    const sizeColorMap: Record<string, { total: number; disponibles: number; enAlquiler: number; enLavado: number; otros: number }> = {}
     allCanastillas.forEach(c => {
-      const key = `${c.size} - ${c.color}`
-      if (!sizeColorMap[key]) sizeColorMap[key] = { total: 0, disponibles: 0, enAlquiler: 0, enLavado: 0, otros: 0 }
-      sizeColorMap[key].total++
-      if (c.status === 'DISPONIBLE') sizeColorMap[key].disponibles++
-      else if (c.status === 'EN_ALQUILER') sizeColorMap[key].enAlquiler++
-      else if (c.status === 'EN_LAVADO') sizeColorMap[key].enLavado++
-      else sizeColorMap[key].otros++
+      const label = statusLabels[c.status] || c.status
+      statusCount[label] = (statusCount[label] || 0) + 1
     })
-    const h3 = ['Tamaño - Color', 'Total', 'Disponibles', 'En Alquiler', 'En Lavado', 'Otros', '% Utilización']
-    const d3 = Object.entries(sizeColorMap).sort((a, b) => b[1].total - a[1].total).map(([key, v]) => [
-      key, v.total, v.disponibles, v.enAlquiler, v.enLavado, v.otros,
-      v.total > 0 ? ((v.enAlquiler / v.total) * 100).toFixed(1) + '%' : '0%'
-    ])
-    const ws3Data = buildSheetData('Distribución por Tamaño y Color', h3, d3)
-    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
-    ws3['!cols'] = [22, 10, 12, 12, 12, 10, 14].map(w => ({ wch: w }))
-    applyMerges(ws3, h3.length, d3.length)
-    XLSX.utils.book_append_sheet(wb, ws3, 'Por Tamaño-Color')
 
-    // === HOJA 4: RESUMEN POR PROPIETARIO ===
-    const ownerMap: Record<string, { nombre: string; total: number; disponibles: number; enAlquiler: number; otros: number }> = {}
-    allCanastillas.forEach(c => {
-      const ownerName = c.current_owner ? `${c.current_owner.first_name} ${c.current_owner.last_name}` : 'Sin asignar'
-      if (!ownerMap[ownerName]) ownerMap[ownerName] = { nombre: ownerName, total: 0, disponibles: 0, enAlquiler: 0, otros: 0 }
-      ownerMap[ownerName].total++
-      if (c.status === 'DISPONIBLE') ownerMap[ownerName].disponibles++
-      else if (c.status === 'EN_ALQUILER') ownerMap[ownerName].enAlquiler++
-      else ownerMap[ownerName].otros++
-    })
-    const h4 = ['Propietario', 'Total Canastillas', 'Disponibles', 'En Alquiler', 'Otros', '% del Inventario']
-    const d4 = Object.values(ownerMap).sort((a, b) => b.total - a.total).map(v => [
-      v.nombre, v.total, v.disponibles, v.enAlquiler, v.otros,
-      total > 0 ? ((v.total / total) * 100).toFixed(1) + '%' : '0%'
-    ])
-    const ws4Data = buildSheetData('Distribución por Propietario', h4, d4)
-    const ws4 = XLSX.utils.aoa_to_sheet(ws4Data)
-    ws4['!cols'] = [28, 16, 12, 12, 10, 14].map(w => ({ wch: w }))
-    applyMerges(ws4, h4.length, d4.length)
-    XLSX.utils.book_append_sheet(wb, ws4, 'Por Propietario')
-
-    // === HOJA 5: RESUMEN POR CONDICIÓN ===
-    const condMap: Record<string, number> = {}
-    allCanastillas.forEach(c => {
-      const cond = c.condition === 'BUENA' ? 'Buena' : c.condition === 'REGULAR' ? 'Regular' : c.condition === 'MALA' ? 'Mala' : (c.condition || 'Sin dato')
-      condMap[cond] = (condMap[cond] || 0) + 1
-    })
-    const propiaCount = allCanastillas.filter(c => c.tipo_propiedad === 'PROPIA').length
-    const h5 = ['Indicador', 'Valor', 'Detalle']
-    const d5: any[][] = [
-      ['Total de Canastillas', total, 'Inventario completo'],
-      ['Propias', propiaCount, `${total > 0 ? ((propiaCount / total) * 100).toFixed(1) : 0}% del total`],
-      ['Alquiladas (de terceros)', total - propiaCount, `${total > 0 ? (((total - propiaCount) / total) * 100).toFixed(1) : 0}% del total`],
-      ['', '', ''],
-      ['CONDICIÓN', '', ''],
-      ...Object.entries(condMap).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, n, `${total > 0 ? ((n / total) * 100).toFixed(1) : 0}%`]),
-      ['', '', ''],
-      ['INDICADORES CLAVE', '', ''],
-      ['Tasa de utilización', `${total > 0 ? (((statusCount['En Alquiler'] || 0) / total) * 100).toFixed(1) : 0}%`, 'Canastillas generando ingresos / Total'],
-      ['Tasa de disponibilidad', `${total > 0 ? (((statusCount['Disponible'] || 0) / total) * 100).toFixed(1) : 0}%`, 'Canastillas listas / Total'],
-      ['Tasa de pérdida/baja', `${total > 0 ? ((((statusCount['Extraviada'] || 0) + (statusCount['Dada de Baja'] || 0)) / total) * 100).toFixed(1) : 0}%`, 'Canastillas perdidas o de baja / Total'],
+    const summaryData = [
+      { label: 'Total Canastillas', value: allCanastillas.length },
+      ...Object.entries(statusCount).map(([status, count]) => ({ label: status, value: count })),
     ]
-    const ws5Data = buildSheetData('Indicadores y Análisis del Inventario', h5, d5)
-    const ws5 = XLSX.utils.aoa_to_sheet(ws5Data)
-    ws5['!cols'] = [30, 16, 40].map(w => ({ wch: w }))
-    applyMerges(ws5, h5.length, d5.length)
-    XLSX.utils.book_append_sheet(wb, ws5, 'Indicadores')
 
+    const wb = createStyledWorkbook('Reporte de Inventario General', headers, reportData,
+      [6, 14, 10, 10, 14, 12, 14, 16, 12, 25, 14],
+      { summaryData, sheetName: 'Inventario' })
     exportExcel(wb, 'Inventario_Canastillas')
   }
 
   const generateAlquileresReport = async () => {
     const { data, error } = await supabase
       .from('rentals')
-      .select(`*, sale_point:sale_points(name, code, city, contact_name, identification), rental_items(id), rental_returns(id, amount, return_date, days_charged, invoice_number)`)
+      .select(`*, sale_point:sale_points(name, code, city), rental_items(id)`)
       .gte('created_at', fechaInicio)
       .lte('created_at', fechaFin + 'T23:59:59')
       .order('created_at', { ascending: false })
     if (error) throw error
-    if (!data || data.length === 0) { setError('No hay alquileres en el período seleccionado'); return }
 
-    const statusLabels: Record<string, string> = { ACTIVO: 'Activo', RETORNADO: 'Retornado', CANCELADO: 'Cancelado', VENCIDO: 'Vencido', PENDIENTE_FIRMA: 'Pend. Firma' }
-    const wb = XLSX.utils.book_new()
-
-    // === HOJA 1: DETALLE COMPLETO ===
-    const h1 = ['#', 'N° Remisión', 'Cliente', 'NIT/CC', 'Ciudad', 'Contacto', 'Tipo', 'Estado', 'Fecha Inicio', 'Fecha Devolución Est.', 'Fecha Devolución Real', 'Días Estimados', 'Días Reales', 'Tarifa Diaria', 'Monto Total', 'Total Facturado', 'Canastillas', 'Devueltas', 'Pendientes', 'N° Devoluciones']
-    const d1 = data.map((r, i) => {
-      const returned = r.returned_items_count || 0
-      const pending = r.pending_items_count || (r.rental_items?.length || 0) - returned
-      return [
-        i + 1, r.remision_number || 'N/A',
-        r.sale_point?.name || 'N/A', r.sale_point?.identification || '-', r.sale_point?.city || '-', r.sale_point?.contact_name || '-',
-        r.rental_type === 'INTERNO' ? 'Interno' : 'Externo', statusLabels[r.status] || r.status,
-        formatDateDisplay(r.start_date), formatDateDisplay(r.estimated_return_date), formatDateDisplay(r.actual_return_date),
-        r.estimated_days || 0, r.actual_days || 0, r.daily_rate || 0,
-        r.total_amount || 0, r.total_invoiced || 0,
-        r.rental_items?.length || 0, returned, pending, r.rental_returns?.length || 0
-      ]
-    })
-    const ws1Data = buildSheetData('Detalle Completo de Alquileres', h1, d1)
-    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
-    ws1['!cols'] = [5, 14, 22, 14, 12, 18, 10, 12, 13, 13, 13, 10, 10, 12, 14, 14, 11, 11, 11, 12].map(w => ({ wch: w }))
-    applyMerges(ws1, h1.length, d1.length)
-    XLSX.utils.book_append_sheet(wb, ws1, 'Detalle Alquileres')
-
-    // === HOJA 2: RESUMEN POR CLIENTE ===
-    const clientMap: Record<string, { nombre: string; ciudad: string; nit: string; alquileres: number; canastillas: number; monto: number; devueltas: number; pendientes: number; activos: number; retornados: number }> = {}
-    data.forEach(r => {
-      const name = r.sale_point?.name || 'Sin cliente'
-      if (!clientMap[name]) clientMap[name] = { nombre: name, ciudad: r.sale_point?.city || '-', nit: r.sale_point?.identification || '-', alquileres: 0, canastillas: 0, monto: 0, devueltas: 0, pendientes: 0, activos: 0, retornados: 0 }
-      clientMap[name].alquileres++
-      clientMap[name].canastillas += r.rental_items?.length || 0
-      clientMap[name].monto += r.total_amount || 0
-      clientMap[name].devueltas += r.returned_items_count || 0
-      clientMap[name].pendientes += r.pending_items_count || 0
-      if (r.status === 'ACTIVO') clientMap[name].activos++
-      if (r.status === 'RETORNADO') clientMap[name].retornados++
-    })
-    const h2 = ['Cliente', 'NIT/CC', 'Ciudad', 'Total Alquileres', 'Activos', 'Retornados', 'Canastillas Totales', 'Devueltas', 'Pendientes', 'Monto Total', '% Ingresos']
-    const totalMonto = data.reduce((s, r) => s + (r.total_amount || 0), 0)
-    const d2 = Object.values(clientMap).sort((a, b) => b.monto - a.monto).map(c => [
-      c.nombre, c.nit, c.ciudad, c.alquileres, c.activos, c.retornados, c.canastillas, c.devueltas, c.pendientes,
-      c.monto, totalMonto > 0 ? ((c.monto / totalMonto) * 100).toFixed(1) + '%' : '0%'
-    ])
-    const ws2Data = buildSheetData('Análisis por Cliente', h2, d2, [
-      { label: 'Total Clientes', value: Object.keys(clientMap).length },
-      { label: 'Clientes con alquileres activos', value: Object.values(clientMap).filter(c => c.activos > 0).length },
-      { label: 'Cliente con mayor facturación', value: Object.values(clientMap).sort((a, b) => b.monto - a.monto)[0]?.nombre || '-' },
-    ])
-    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
-    ws2['!cols'] = [25, 14, 14, 14, 10, 12, 16, 11, 11, 14, 12].map(w => ({ wch: w }))
-    applyMerges(ws2, h2.length, d2.length)
-    XLSX.utils.book_append_sheet(wb, ws2, 'Por Cliente')
-
-    // === HOJA 3: RESUMEN POR TIPO Y ESTADO ===
-    const tipoMap: Record<string, Record<string, number>> = {}
-    data.forEach(r => {
-      const tipo = r.rental_type === 'INTERNO' ? 'Interno' : 'Externo'
-      const estado = statusLabels[r.status] || r.status
-      if (!tipoMap[tipo]) tipoMap[tipo] = {}
-      tipoMap[tipo][estado] = (tipoMap[tipo][estado] || 0) + 1
-    })
-    const allStatuses = [...new Set(data.map(r => statusLabels[r.status] || r.status))]
-    const h3 = ['Tipo', ...allStatuses, 'Total']
-    const d3 = Object.entries(tipoMap).map(([tipo, estados]) => {
-      const rowTotal = Object.values(estados).reduce((s, v) => s + v, 0)
-      return [tipo, ...allStatuses.map(s => estados[s] || 0), rowTotal]
-    })
-    const activos = data.filter(r => r.status === 'ACTIVO').length
-    const retornados = data.filter(r => r.status === 'RETORNADO').length
-    const totalCan = data.reduce((s, r) => s + (r.rental_items?.length || 0), 0)
-    const ws3Data = buildSheetData('Distribución por Tipo y Estado', h3, d3, [
-      { label: 'Total Alquileres', value: data.length },
-      { label: 'Activos', value: activos },
-      { label: 'Retornados', value: retornados },
-      { label: 'Total Canastillas Alquiladas', value: totalCan },
-      { label: 'Ingresos Totales', value: `$${totalMonto.toLocaleString()}` },
-      { label: 'Promedio por Alquiler', value: data.length > 0 ? `$${Math.round(totalMonto / data.length).toLocaleString()}` : '$0' },
-      { label: 'Promedio Canastillas/Alquiler', value: data.length > 0 ? Math.round(totalCan / data.length) : 0 },
-      { label: 'Tarifa Promedio', value: data.length > 0 ? `$${Math.round(data.reduce((s, r) => s + (r.daily_rate || 0), 0) / data.length).toLocaleString()}` : '$0' },
-    ])
-    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
-    ws3['!cols'] = [14, ...allStatuses.map(() => 12), 10].map(w => ({ wch: w }))
-    applyMerges(ws3, h3.length, d3.length)
-    XLSX.utils.book_append_sheet(wb, ws3, 'Tipo y Estado')
-
-    // === HOJA 4: HISTORIAL DE DEVOLUCIONES ===
-    const allReturns: any[] = []
-    data.forEach(r => {
-      (r.rental_returns || []).forEach((ret: any) => {
-        allReturns.push({ ...ret, remision: r.remision_number, cliente: r.sale_point?.name || 'N/A' })
-      })
-    })
-    if (allReturns.length > 0) {
-      const h4 = ['#', 'Remisión Alquiler', 'Cliente', 'N° Factura Devolución', 'Fecha Devolución', 'Días Cobrados', 'Monto']
-      const d4 = allReturns.sort((a, b) => new Date(b.return_date || 0).getTime() - new Date(a.return_date || 0).getTime())
-        .map((ret, i) => [i + 1, ret.remision, ret.cliente, ret.invoice_number || '-', formatDateDisplay(ret.return_date), ret.days_charged || 0, ret.amount || 0])
-      const totalDevuelto = allReturns.reduce((s, r) => s + (r.amount || 0), 0)
-      const ws4Data = buildSheetData('Historial de Devoluciones', h4, d4, [
-        { label: 'Total Devoluciones', value: allReturns.length },
-        { label: 'Total Facturado en Devoluciones', value: `$${totalDevuelto.toLocaleString()}` },
-      ])
-      const ws4 = XLSX.utils.aoa_to_sheet(ws4Data)
-      ws4['!cols'] = [5, 14, 22, 18, 14, 14, 14].map(w => ({ wch: w }))
-      applyMerges(ws4, h4.length, d4.length)
-      XLSX.utils.book_append_sheet(wb, ws4, 'Devoluciones')
+    const statusLabels: Record<string, string> = {
+      ACTIVO: 'Activo',
+      RETORNADO: 'Retornado',
+      CANCELADO: 'Cancelado',
+      VENCIDO: 'Vencido',
     }
 
+    const headers = ['#', 'N° Remisión', 'Cliente', 'Ciudad', 'Tipo', 'Estado', 'Fecha Inicio', 'Fecha Devolución', 'Días', 'Tarifa Diaria', 'Total', 'Canastillas']
+
+    const reportData = (data || []).map((r, i) => [
+      i + 1,
+      r.remision_number || 'N/A',
+      r.sale_point?.name || 'N/A',
+      r.sale_point?.city || 'N/A',
+      r.rental_type === 'INTERNO' ? 'Interno' : 'Externo',
+      statusLabels[r.status] || r.status,
+      formatDateDisplay(r.start_date),
+      formatDateDisplay(r.actual_return_date || r.estimated_return_date),
+      r.actual_days || r.estimated_days || 0,
+      r.daily_rate || 0,
+      r.total_amount || 0,
+      r.rental_items?.length || 0
+    ])
+
+    const totalMonto = (data || []).reduce((sum, r) => sum + (r.total_amount || 0), 0)
+    const totalCanastillas = (data || []).reduce((sum, r) => sum + (r.rental_items?.length || 0), 0)
+    const activos = (data || []).filter(r => r.status === 'ACTIVO').length
+    const retornados = (data || []).filter(r => r.status === 'RETORNADO').length
+
+    const summaryData = [
+      { label: 'Total Alquileres', value: data?.length || 0 },
+      { label: 'Activos', value: activos },
+      { label: 'Retornados', value: retornados },
+      { label: 'Total Canastillas Alquiladas', value: totalCanastillas },
+      { label: 'Ingresos Totales', value: totalMonto },
+      { label: 'Promedio por Alquiler', value: data?.length ? Math.round(totalMonto / data.length) : 0 },
+    ]
+
+    const wb = createStyledWorkbook('Reporte de Alquileres', headers, reportData,
+      [6, 14, 25, 14, 10, 12, 14, 14, 8, 14, 14, 12],
+      {
+        dateRange: `${formatDateDisplay(fechaInicio)} - ${formatDateDisplay(fechaFin)}`,
+        summaryData, currencyColumns: [9, 10], sheetName: 'Alquileres'
+      })
     exportExcel(wb, 'Reporte_Alquileres')
   }
 
@@ -702,238 +552,122 @@ export function ReportesPage() {
       .from('transfers')
       .select(`
         *,
-        from_user:users!transfers_from_user_id_fkey(first_name, last_name, email),
-        to_user:users!transfers_to_user_id_fkey(first_name, last_name, email),
-        transfer_items(id, canastilla:canastillas(codigo, size, color))
+        from_user:users!transfers_from_user_id_fkey(first_name, last_name),
+        to_user:users!transfers_to_user_id_fkey(first_name, last_name),
+        transfer_items(id)
       `)
       .gte('created_at', fechaInicio)
       .lte('created_at', fechaFin + 'T23:59:59')
       .order('created_at', { ascending: false })
     if (error) throw error
-    if (!data || data.length === 0) { setError('No hay traspasos en el período seleccionado'); return }
 
-    const statusLabels: Record<string, string> = { PENDIENTE: 'Pendiente', ACEPTADO: 'Aceptado', RECHAZADO: 'Rechazado', DEVUELTO: 'Devuelto', DEVUELTO_PARCIAL: 'Dev. Parcial' }
-    const wb = XLSX.utils.book_new()
-
-    // === HOJA 1: DETALLE COMPLETO DE TRASPASOS ===
-    const h1 = ['#', 'N° Remisión', 'Tipo', 'Estado', 'Fecha Solicitud', 'Fecha Respuesta', 'Origen', 'Email Origen', 'Destino', 'Destinatario Ext.', 'Empresa Ext.', 'Canastillas', 'Devueltas', 'Pendientes', 'Motivo', 'Notas']
-    const d1 = data.map((t, i) => [
-      i + 1, t.remision_number || 'N/A',
-      t.is_external_transfer ? 'Externo' : t.is_washing_transfer ? 'Lavado' : 'Interno',
-      statusLabels[t.status] || t.status,
-      formatDateDisplay(t.requested_at || t.created_at), formatDateDisplay(t.responded_at),
-      t.from_user ? `${t.from_user.first_name} ${t.from_user.last_name}` : 'N/A',
-      t.from_user?.email || '-',
-      t.is_external_transfer ? (t.external_recipient_name || 'Externo') : t.to_user ? `${t.to_user.first_name} ${t.to_user.last_name}` : 'N/A',
-      t.external_recipient_name || '-', t.external_recipient_empresa || '-',
-      t.transfer_items?.length || t.items_count || 0,
-      t.returned_items_count || 0, t.pending_items_count || 0,
-      t.reason || '-', t.notes || '-'
-    ])
-    const ws1Data = buildSheetData('Detalle Completo de Traspasos', h1, d1)
-    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
-    ws1['!cols'] = [5, 14, 10, 12, 13, 13, 22, 22, 22, 18, 18, 11, 11, 11, 25, 25].map(w => ({ wch: w }))
-    applyMerges(ws1, h1.length, d1.length)
-    XLSX.utils.book_append_sheet(wb, ws1, 'Detalle Traspasos')
-
-    // === HOJA 2: ANÁLISIS POR TIPO ===
-    const tipos = { Interno: data.filter(t => !t.is_external_transfer && !t.is_washing_transfer), Externo: data.filter(t => t.is_external_transfer), Lavado: data.filter(t => t.is_washing_transfer) }
-    const h2 = ['Tipo de Traspaso', 'Total', 'Pendientes', 'Aceptados', 'Rechazados', 'Devueltos', 'Dev. Parcial', 'Total Canastillas', '% del Total']
-    const d2 = Object.entries(tipos).map(([tipo, arr]) => [
-      tipo, arr.length,
-      arr.filter(t => t.status === 'PENDIENTE').length, arr.filter(t => t.status === 'ACEPTADO').length,
-      arr.filter(t => t.status === 'RECHAZADO').length, arr.filter(t => t.status === 'DEVUELTO').length,
-      arr.filter(t => t.status === 'DEVUELTO_PARCIAL').length,
-      arr.reduce((s, t) => s + (t.transfer_items?.length || t.items_count || 0), 0),
-      data.length > 0 ? ((arr.length / data.length) * 100).toFixed(1) + '%' : '0%'
-    ])
-    const totalCanTraspasos = data.reduce((s, t) => s + (t.transfer_items?.length || t.items_count || 0), 0)
-    const ws2Data = buildSheetData('Análisis por Tipo de Traspaso', h2, d2, [
-      { label: 'Total Traspasos', value: data.length },
-      { label: 'Total Canastillas Movidas', value: totalCanTraspasos },
-      { label: 'Tasa de Aceptación', value: data.length > 0 ? ((data.filter(t => t.status === 'ACEPTADO' || t.status === 'DEVUELTO' || t.status === 'DEVUELTO_PARCIAL').length / data.length) * 100).toFixed(1) + '%' : '0%' },
-      { label: 'Tasa de Rechazo', value: data.length > 0 ? ((data.filter(t => t.status === 'RECHAZADO').length / data.length) * 100).toFixed(1) + '%' : '0%' },
-    ])
-    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
-    ws2['!cols'] = [18, 10, 12, 12, 12, 12, 12, 16, 12].map(w => ({ wch: w }))
-    applyMerges(ws2, h2.length, d2.length)
-    XLSX.utils.book_append_sheet(wb, ws2, 'Por Tipo')
-
-    // === HOJA 3: FLUJO DE CANASTILLAS ENTRE USUARIOS ===
-    const flowMap: Record<string, { origen: string; destino: string; cantidad: number; traspasos: number }> = {}
-    data.forEach(t => {
-      const orig = t.from_user ? `${t.from_user.first_name} ${t.from_user.last_name}` : 'N/A'
-      const dest = t.is_external_transfer ? (t.external_recipient_empresa || t.external_recipient_name || 'Externo') : t.to_user ? `${t.to_user.first_name} ${t.to_user.last_name}` : 'N/A'
-      const key = `${orig} → ${dest}`
-      if (!flowMap[key]) flowMap[key] = { origen: orig, destino: dest, cantidad: 0, traspasos: 0 }
-      flowMap[key].cantidad += t.transfer_items?.length || t.items_count || 0
-      flowMap[key].traspasos++
-    })
-    const h3 = ['#', 'Origen', 'Destino', 'N° Traspasos', 'Total Canastillas', 'Promedio por Traspaso']
-    const d3 = Object.values(flowMap).sort((a, b) => b.cantidad - a.cantidad).map((f, i) => [
-      i + 1, f.origen, f.destino, f.traspasos, f.cantidad, f.traspasos > 0 ? Math.round(f.cantidad / f.traspasos) : 0
-    ])
-    const ws3Data = buildSheetData('Flujo de Canastillas entre Usuarios/Clientes', h3, d3)
-    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
-    ws3['!cols'] = [5, 25, 25, 14, 16, 18].map(w => ({ wch: w }))
-    applyMerges(ws3, h3.length, d3.length)
-    XLSX.utils.book_append_sheet(wb, ws3, 'Flujo Canastillas')
-
-    // === HOJA 4: TRASPASOS EXTERNOS DETALLADOS ===
-    const externos = data.filter(t => t.is_external_transfer)
-    if (externos.length > 0) {
-      const h4 = ['#', 'N° Remisión', 'Fecha', 'Estado', 'Empresa/Cliente Destino', 'Contacto', 'Cédula Receptor', 'Teléfono', 'Canastillas', 'Devueltas', 'Pendientes', 'Motivo']
-      const d4 = externos.map((t, i) => [
-        i + 1, t.remision_number || 'N/A', formatDateDisplay(t.requested_at || t.created_at), statusLabels[t.status] || t.status,
-        t.external_recipient_empresa || '-', t.external_recipient_name || '-', t.external_recipient_cedula || '-', t.external_recipient_phone || '-',
-        t.transfer_items?.length || t.items_count || 0, t.returned_items_count || 0, t.pending_items_count || 0, t.reason || '-'
-      ])
-      const ws4Data = buildSheetData('Traspasos Externos Detallados', h4, d4, [
-        { label: 'Total Traspasos Externos', value: externos.length },
-        { label: 'Canastillas en exterior', value: externos.reduce((s, t) => s + (t.pending_items_count || 0), 0) },
-        { label: 'Canastillas devueltas', value: externos.reduce((s, t) => s + (t.returned_items_count || 0), 0) },
-      ])
-      const ws4 = XLSX.utils.aoa_to_sheet(ws4Data)
-      ws4['!cols'] = [5, 14, 13, 12, 22, 18, 14, 14, 11, 11, 11, 25].map(w => ({ wch: w }))
-      applyMerges(ws4, h4.length, d4.length)
-      XLSX.utils.book_append_sheet(wb, ws4, 'Externos')
+    const statusLabels: Record<string, string> = {
+      PENDIENTE: 'Pendiente',
+      ACEPTADO: 'Aceptado',
+      RECHAZADO: 'Rechazado',
+      DEVUELTO: 'Devuelto',
+      DEVUELTO_PARCIAL: 'Dev. Parcial',
     }
 
+    const headers = ['#', 'N° Remisión', 'Tipo', 'Origen', 'Destino', 'Estado', 'Fecha Solicitud', 'Fecha Respuesta', 'Canastillas', 'Notas']
+
+    const reportData = (data || []).map((t, i) => [
+      i + 1,
+      t.remision_number || 'N/A',
+      t.is_external_transfer ? 'Externo' : t.is_washing_transfer ? 'Lavado' : 'Interno',
+      t.from_user ? `${t.from_user.first_name} ${t.from_user.last_name}` : 'N/A',
+      t.is_external_transfer
+        ? (t.external_recipient_name || 'Externo')
+        : t.to_user ? `${t.to_user.first_name} ${t.to_user.last_name}` : 'N/A',
+      statusLabels[t.status] || t.status,
+      formatDateDisplay(t.requested_at || t.created_at),
+      formatDateDisplay(t.responded_at),
+      t.transfer_items?.length || t.items_count || 0,
+      t.notes || ''
+    ])
+
+    const statusCount: Record<string, number> = {}
+    let totalCanastillas = 0
+    ;(data || []).forEach(t => {
+      const label = statusLabels[t.status] || t.status
+      statusCount[label] = (statusCount[label] || 0) + 1
+      totalCanastillas += t.transfer_items?.length || t.items_count || 0
+    })
+
+    const summaryData = [
+      { label: 'Total Traspasos', value: data?.length || 0 },
+      { label: 'Total Canastillas Movidas', value: totalCanastillas },
+      ...Object.entries(statusCount).map(([status, count]) => ({ label: status, value: count })),
+    ]
+
+    const wb = createStyledWorkbook('Reporte de Traspasos', headers, reportData,
+      [6, 14, 10, 25, 25, 14, 14, 14, 12, 30],
+      {
+        dateRange: `${formatDateDisplay(fechaInicio)} - ${formatDateDisplay(fechaFin)}`,
+        summaryData, sheetName: 'Traspasos'
+      })
     exportExcel(wb, 'Reporte_Traspasos')
   }
 
   const generateIngresosReport = async () => {
-    // Cargar alquileres retornados + activos en el período
-    const { data: retornados, error: e1 } = await supabase
+    const { data, error } = await supabase
       .from('rentals')
-      .select('*, sale_point:sale_points(name, city, identification), rental_items(id), rental_returns(id, amount, return_date, days_charged)')
-      .gte('created_at', fechaInicio)
-      .lte('created_at', fechaFin + 'T23:59:59')
-    if (e1) throw e1
+      .select('*, rental_items(id)')
+      .eq('status', 'RETORNADO')
+      .gte('actual_return_date', fechaInicio)
+      .lte('actual_return_date', fechaFin + 'T23:59:59')
+    if (error) throw error
 
-    // Cargar facturas mensuales del período
-    const { data: facturas, error: e2 } = await supabase
-      .from('monthly_invoices')
-      .select('*, sale_point:sale_points(name, city)')
-      .gte('created_at', fechaInicio)
-      .lte('created_at', fechaFin + 'T23:59:59')
-    if (e2) throw e2
-
-    const allRentals = retornados || []
-    const allFacturas = facturas || []
-    if (allRentals.length === 0 && allFacturas.length === 0) { setError('No hay datos de ingresos en el período seleccionado'); return }
-
-    const wb = XLSX.utils.book_new()
-
-    // === HOJA 1: INGRESOS DIARIOS ===
-    const groupedByDate: Record<string, { ingresos: number; alquileres: number; canastillas: number; retornos: number }> = {}
-    allRentals.forEach(r => {
-      const returns = r.rental_returns || []
-      returns.forEach((ret: any) => {
-        const fecha = formatDateDisplay(ret.return_date)
-        if (!groupedByDate[fecha]) groupedByDate[fecha] = { ingresos: 0, alquileres: 0, canastillas: 0, retornos: 0 }
-        groupedByDate[fecha].ingresos += ret.amount || 0
-        groupedByDate[fecha].retornos++
-      })
-      if (returns.length === 0 && r.total_amount) {
-        const fecha = formatDateDisplay(r.actual_return_date || r.start_date)
-        if (!groupedByDate[fecha]) groupedByDate[fecha] = { ingresos: 0, alquileres: 0, canastillas: 0, retornos: 0 }
-        groupedByDate[fecha].ingresos += r.total_amount || 0
-      }
-      const fecha = formatDateDisplay(r.start_date)
-      if (!groupedByDate[fecha]) groupedByDate[fecha] = { ingresos: 0, alquileres: 0, canastillas: 0, retornos: 0 }
-      groupedByDate[fecha].alquileres++
-      groupedByDate[fecha].canastillas += r.rental_items?.length || 0
-    })
-    const sorted = Object.entries(groupedByDate).sort((a, b) => a[0].split('/').reverse().join('-').localeCompare(b[0].split('/').reverse().join('-')))
-    const h1 = ['#', 'Fecha', 'Ingresos del Día', 'Alquileres Creados', 'Canastillas', 'Devoluciones', 'Promedio por Operación']
-    const d1 = sorted.map(([fecha, d], i) => [
-      i + 1, fecha, d.ingresos, d.alquileres, d.canastillas, d.retornos,
-      (d.alquileres + d.retornos) > 0 ? Math.round(d.ingresos / (d.alquileres + d.retornos)) : 0
-    ])
-    const totalIngresos = Object.values(groupedByDate).reduce((s, d) => s + d.ingresos, 0)
-    const diasConDatos = Object.keys(groupedByDate).length
-    const ws1Data = buildSheetData('Análisis de Ingresos Diarios', h1, d1, [
-      { label: 'Ingresos Totales', value: `$${totalIngresos.toLocaleString()}` },
-      { label: 'Promedio Diario', value: diasConDatos > 0 ? `$${Math.round(totalIngresos / diasConDatos).toLocaleString()}` : '$0' },
-      { label: 'Mejor día', value: sorted.length > 0 ? sorted.sort((a, b) => b[1].ingresos - a[1].ingresos)[0][0] + ` ($${sorted.sort((a, b) => b[1].ingresos - a[1].ingresos)[0][1].ingresos.toLocaleString()})` : '-' },
-      { label: 'Días con actividad', value: diasConDatos },
-    ])
-    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
-    ws1['!cols'] = [5, 14, 16, 16, 12, 14, 18].map(w => ({ wch: w }))
-    applyMerges(ws1, h1.length, d1.length)
-    XLSX.utils.book_append_sheet(wb, ws1, 'Ingresos Diarios')
-
-    // === HOJA 2: INGRESOS POR CLIENTE ===
-    const clientIngMap: Record<string, { nombre: string; ciudad: string; nit: string; ingresos: number; alquileres: number; canastillas: number }> = {}
-    allRentals.forEach(r => {
-      const name = r.sale_point?.name || 'Sin cliente'
-      if (!clientIngMap[name]) clientIngMap[name] = { nombre: name, ciudad: r.sale_point?.city || '-', nit: r.sale_point?.identification || '-', ingresos: 0, alquileres: 0, canastillas: 0 }
-      clientIngMap[name].ingresos += r.total_amount || 0
-      clientIngMap[name].alquileres++
-      clientIngMap[name].canastillas += r.rental_items?.length || 0
-    })
-    const h2 = ['#', 'Cliente', 'NIT/CC', 'Ciudad', 'Alquileres', 'Canastillas', 'Ingresos', '% del Total', 'Promedio por Alquiler']
-    const totalIng2 = Object.values(clientIngMap).reduce((s, c) => s + c.ingresos, 0)
-    const d2 = Object.values(clientIngMap).sort((a, b) => b.ingresos - a.ingresos).map((c, i) => [
-      i + 1, c.nombre, c.nit, c.ciudad, c.alquileres, c.canastillas, c.ingresos,
-      totalIng2 > 0 ? ((c.ingresos / totalIng2) * 100).toFixed(1) + '%' : '0%',
-      c.alquileres > 0 ? Math.round(c.ingresos / c.alquileres) : 0
-    ])
-    const ws2Data = buildSheetData('Ingresos por Cliente', h2, d2, [
-      { label: 'Total Clientes', value: Object.keys(clientIngMap).length },
-      { label: 'Ingreso Total', value: `$${totalIng2.toLocaleString()}` },
-      { label: 'Cliente Top', value: Object.values(clientIngMap).sort((a, b) => b.ingresos - a.ingresos)[0]?.nombre || '-' },
-    ])
-    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
-    ws2['!cols'] = [5, 22, 14, 14, 12, 12, 14, 12, 16].map(w => ({ wch: w }))
-    applyMerges(ws2, h2.length, d2.length)
-    XLSX.utils.book_append_sheet(wb, ws2, 'Por Cliente')
-
-    // === HOJA 3: INGRESOS POR TIPO (INTERNO vs EXTERNO) ===
-    const tipoIng: Record<string, { ingresos: number; count: number; canastillas: number }> = {}
-    allRentals.forEach(r => {
-      const tipo = r.rental_type === 'INTERNO' ? 'Interno' : 'Externo'
-      if (!tipoIng[tipo]) tipoIng[tipo] = { ingresos: 0, count: 0, canastillas: 0 }
-      tipoIng[tipo].ingresos += r.total_amount || 0
-      tipoIng[tipo].count++
-      tipoIng[tipo].canastillas += r.rental_items?.length || 0
-    })
-    const h3 = ['Tipo', 'Alquileres', 'Canastillas', 'Ingresos', '% Ingresos', 'Promedio por Alquiler', 'Ingreso por Canastilla']
-    const d3 = Object.entries(tipoIng).map(([tipo, v]) => [
-      tipo, v.count, v.canastillas, v.ingresos,
-      totalIng2 > 0 ? ((v.ingresos / totalIng2) * 100).toFixed(1) + '%' : '0%',
-      v.count > 0 ? Math.round(v.ingresos / v.count) : 0,
-      v.canastillas > 0 ? Math.round(v.ingresos / v.canastillas) : 0
-    ])
-    const ws3Data = buildSheetData('Comparativa Interno vs Externo', h3, d3)
-    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
-    ws3['!cols'] = [14, 12, 12, 14, 12, 18, 18].map(w => ({ wch: w }))
-    applyMerges(ws3, h3.length, d3.length)
-    XLSX.utils.book_append_sheet(wb, ws3, 'Interno vs Externo')
-
-    // === HOJA 4: FACTURAS MENSUALES ===
-    if (allFacturas.length > 0) {
-      const h4 = ['#', 'N° Factura', 'Cliente', 'Ciudad', 'Período', 'Subtotal', 'Descuento', 'Total', 'Estado', 'Fecha Cierre']
-      const d4 = allFacturas.sort((a: any, b: any) => (b.total_amount || 0) - (a.total_amount || 0)).map((f: any, i: number) => [
-        i + 1, f.invoice_number || '-', f.sale_point?.name || '-', f.sale_point?.city || '-',
-        `${f.billing_month}/${f.billing_year}`,
-        (f.total_amount || 0) + (f.discount || 0), f.discount || 0, f.total_amount || 0,
-        f.closed_at ? 'Cerrada' : 'Abierta', f.closed_at ? formatDateDisplay(f.closed_at) : '-'
-      ])
-      const totalFact = allFacturas.reduce((s: number, f: any) => s + (f.total_amount || 0), 0)
-      const ws4Data = buildSheetData('Facturas Mensuales Generadas', h4, d4, [
-        { label: 'Total Facturas', value: allFacturas.length },
-        { label: 'Total Facturado', value: `$${totalFact.toLocaleString()}` },
-        { label: 'Cerradas', value: allFacturas.filter((f: any) => f.closed_at).length },
-        { label: 'Abiertas', value: allFacturas.filter((f: any) => !f.closed_at).length },
-      ])
-      const ws4 = XLSX.utils.aoa_to_sheet(ws4Data)
-      ws4['!cols'] = [5, 14, 22, 14, 12, 14, 12, 14, 10, 14].map(w => ({ wch: w }))
-      applyMerges(ws4, h4.length, d4.length)
-      XLSX.utils.book_append_sheet(wb, ws4, 'Facturas Mensuales')
+    if (!data || data.length === 0) {
+      setError('No hay datos de ingresos en el período seleccionado')
+      return
     }
 
+    const groupedByDate: Record<string, { ingresos: number; alquileres: number; canastillas: number }> = {}
+    data.forEach(rental => {
+      const fecha = formatDateDisplay(rental.actual_return_date)
+      if (!groupedByDate[fecha]) groupedByDate[fecha] = { ingresos: 0, alquileres: 0, canastillas: 0 }
+      groupedByDate[fecha].ingresos += rental.total_amount || 0
+      groupedByDate[fecha].alquileres += 1
+      groupedByDate[fecha].canastillas += rental.rental_items?.length || 0
+    })
+
+    const headers = ['#', 'Fecha', 'Ingresos del Día', 'Alquileres', 'Canastillas', 'Promedio por Alquiler']
+
+    const sorted = Object.entries(groupedByDate).sort((a, b) => {
+      const dA = a[0].split('/').reverse().join('-')
+      const dB = b[0].split('/').reverse().join('-')
+      return dA.localeCompare(dB)
+    })
+
+    const reportData = sorted.map(([fecha, datos], i) => [
+      i + 1,
+      fecha,
+      datos.ingresos,
+      datos.alquileres,
+      datos.canastillas,
+      datos.alquileres > 0 ? Math.round(datos.ingresos / datos.alquileres) : 0
+    ])
+
+    const totalIngresos = data.reduce((sum, r) => sum + (r.total_amount || 0), 0)
+    const totalCanastillas = data.reduce((sum, r) => sum + (r.rental_items?.length || 0), 0)
+    const diasConDatos = Object.keys(groupedByDate).length
+
+    const summaryData = [
+      { label: 'Ingresos Totales', value: totalIngresos },
+      { label: 'Total Alquileres Retornados', value: data.length },
+      { label: 'Total Canastillas', value: totalCanastillas },
+      { label: 'Promedio por Alquiler', value: Math.round(totalIngresos / data.length) },
+      { label: 'Promedio Diario', value: Math.round(totalIngresos / diasConDatos) },
+      { label: 'Días con Actividad', value: diasConDatos },
+    ]
+
+    const wb = createStyledWorkbook('Análisis de Ingresos', headers, reportData,
+      [6, 14, 18, 12, 14, 18],
+      {
+        dateRange: `${formatDateDisplay(fechaInicio)} - ${formatDateDisplay(fechaFin)}`,
+        summaryData, currencyColumns: [2, 5], sheetName: 'Ingresos'
+      })
     exportExcel(wb, 'Analisis_Ingresos')
   }
 
@@ -1150,19 +884,6 @@ export function ReportesPage() {
     exportExcel(wb, 'Trazabilidad_Completa')
   }
 
-  // Helper para aplicar merges estándar del encabezado corporativo
-  function applyMerges(ws: XLSX.WorkSheet, colCount: number, dataLength: number) {
-    ws['!rows'] = [{ hpt: 35 }, { hpt: 20 }, { hpt: 10 }, { hpt: 28 }, { hpt: 18 }, { hpt: 10 }, { hpt: 28 }]
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-      { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
-    ]
-    const smTitleIdx = dataLength + 8
-    ws['!merges'].push({ s: { r: smTitleIdx, c: 0 }, e: { r: smTitleIdx, c: colCount - 1 } })
-  }
-
   // Helper para construir los datos de una hoja con encabezado corporativo
   function buildSheetData(title: string, headers: string[], data: any[][], summaryData?: { label: string; value: string | number }[]) {
     const colCount = headers.length
@@ -1338,9 +1059,9 @@ export function ReportesPage() {
                           </svg>
                           Excel
                         </span>
-                        {(report.id === 'trazabilidad' || report.id === 'inventario' || report.id === 'alquileres' || report.id === 'traspasos' || report.id === 'ingresos') && (
+                        {report.id === 'trazabilidad' && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200">
-                            {report.id === 'inventario' ? '5 hojas' : report.id === 'trazabilidad' ? '3 hojas' : '4 hojas'}
+                            3 hojas
                           </span>
                         )}
                       </div>

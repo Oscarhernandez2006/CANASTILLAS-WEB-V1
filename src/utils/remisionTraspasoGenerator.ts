@@ -124,7 +124,7 @@ export const generateRemisionTraspasoPDF = async (transfer: Transfer, signatureD
   const labels: [string, string] | [string, string, string] = hasTercero
     ? ['ENTREGA', 'RECIBE', 'TERCERO']
     : ['ENTREGA', 'RECIBE']
-  drawSignatures(doc, signatureData, labels)
+  drawSignatures(doc, signatureData, labels, yPos)
 
   // Footer
   drawFooter(doc, accent)

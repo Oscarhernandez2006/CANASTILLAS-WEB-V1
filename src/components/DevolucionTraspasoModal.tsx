@@ -203,6 +203,19 @@ export function DevolucionTraspasoModal({ isOpen, onClose, onSuccess, transfer }
         }
       }
 
+      // 0. Verificar que el traspaso siga en estado ACEPTADO antes de procesar devolución
+      const { data: currentTransfer, error: checkError } = await supabase
+        .from('transfers')
+        .select('status')
+        .eq('id', transfer.id)
+        .single()
+
+      if (checkError) throw checkError
+
+      if (currentTransfer.status !== 'ACEPTADO') {
+        throw new Error(`No se puede procesar la devolución porque el traspaso ya fue ${currentTransfer.status.toLowerCase()}. Por favor actualiza la página.`)
+      }
+
       // 1. Crear el registro de devolución de traspaso
       const { data: transferReturn, error: returnError } = await supabase
         .from('transfer_returns')
@@ -242,22 +255,68 @@ export function DevolucionTraspasoModal({ isOpen, onClose, onSuccess, transfer }
         if (itemsError) throw itemsError
       }
 
-      // 3. Devolver canastillas al remitente original (from_user_id) con estado DISPONIBLE
-      for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
-        const batch = canastillaIds.slice(i, i + BATCH_SIZE)
+      // 3. Devolver canastillas al usuario que procesa la devolución (conductor que recoge)
+      // Esto permite que un conductor diferente al que entregó pueda recoger las canastillas
+      // La trazabilidad queda en: processed_by = quien recoge, from_user_id = quien entregó originalmente
+      const returnToUserId = user?.id || transfer.from_user_id
+
+      // Las canastillas EN_ALQUILER mantienen su status, las demás vuelven a DISPONIBLE
+      const enAlquilerIds: string[] = []
+      const otrasIds: string[] = []
+
+      for (const lote of lotes) {
+        if (lote.cantidadDevolver > 0) {
+          const seleccionadas = lote.canastillas.slice(0, lote.cantidadDevolver)
+          for (const item of seleccionadas) {
+            if (item.canastilla.status === 'EN_ALQUILER') {
+              enAlquilerIds.push(item.id)
+            } else {
+              otrasIds.push(item.id)
+            }
+          }
+        }
+      }
+
+      // Canastillas normales → DISPONIBLE
+      for (let i = 0; i < otrasIds.length; i += BATCH_SIZE) {
+        const batch = otrasIds.slice(i, i + BATCH_SIZE)
         const { error: canastillasError } = await supabase
           .from('canastillas')
           .update({
-            current_owner_id: transfer.from_user_id,
+            current_owner_id: returnToUserId,
             status: 'DISPONIBLE',
           })
           .in('id', batch)
         if (canastillasError) throw canastillasError
       }
 
-      // 4. Actualizar contadores del traspaso
-      const currentReturned = transfer.returned_items_count || 0
-      const currentPending = transfer.pending_items_count ?? (transfer.items_count || 0)
+      // Canastillas EN_ALQUILER → mantener status, solo cambiar owner
+      for (let i = 0; i < enAlquilerIds.length; i += BATCH_SIZE) {
+        const batch = enAlquilerIds.slice(i, i + BATCH_SIZE)
+        const { error: canastillasError } = await supabase
+          .from('canastillas')
+          .update({
+            current_owner_id: returnToUserId,
+          })
+          .in('id', batch)
+        if (canastillasError) throw canastillasError
+      }
+
+      // 4. Actualizar contadores del traspaso - re-leer valores actuales para evitar race condition
+      const { data: freshTransfer, error: freshError } = await supabase
+        .from('transfers')
+        .select('returned_items_count, pending_items_count, items_count, status')
+        .eq('id', transfer.id)
+        .single()
+
+      if (freshError) throw freshError
+
+      if (freshTransfer.status !== 'ACEPTADO') {
+        throw new Error(`No se pudo completar la devolución porque el traspaso cambió a estado ${freshTransfer.status.toLowerCase()}.`)
+      }
+
+      const currentReturned = freshTransfer.returned_items_count || 0
+      const currentPending = freshTransfer.pending_items_count ?? (freshTransfer.items_count || 0)
       const newReturnedCount = currentReturned + canastillaIds.length
       const newPendingCount = Math.max(0, currentPending - canastillaIds.length)
 
@@ -374,22 +433,43 @@ export function DevolucionTraspasoModal({ isOpen, onClose, onSuccess, transfer }
               </div>
             )}
 
-            {/* Información del destinatario externo y traspaso */}
+            {/* Información del cliente/destinatario y traspaso */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
               <div>
-                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Destinatario Externo</h4>
+                <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {(transfer as any).sale_point ? 'Cliente' : 'Destinatario Externo'}
+                </h4>
                 <div className="p-3 sm:p-4 bg-orange-50 rounded-lg">
-                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                    {transfer.external_recipient_name || transfer.to_user?.first_name}
-                  </p>
-                  <p className="text-xs sm:text-sm text-gray-600 truncate">
-                    Cédula: {transfer.external_recipient_cedula || '-'}
-                  </p>
-                  {transfer.external_recipient_empresa && (
-                    <p className="text-xs sm:text-sm text-gray-500">{transfer.external_recipient_empresa}</p>
-                  )}
-                  {transfer.external_recipient_phone && (
-                    <p className="text-xs sm:text-sm text-gray-500">Tel: {transfer.external_recipient_phone}</p>
+                  {(transfer as any).sale_point ? (
+                    <>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {(transfer as any).sale_point.name}
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">
+                        Contacto: {(transfer as any).sale_point.contact_name}
+                      </p>
+                      {(transfer as any).sale_point.identification && (
+                        <p className="text-xs sm:text-sm text-gray-500">NIT/CC: {(transfer as any).sale_point.identification}</p>
+                      )}
+                      {(transfer as any).sale_point.contact_phone && (
+                        <p className="text-xs sm:text-sm text-gray-500">Tel: {(transfer as any).sale_point.contact_phone}</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {transfer.external_recipient_name || transfer.to_user?.first_name}
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">
+                        Cédula: {transfer.external_recipient_cedula || '-'}
+                      </p>
+                      {transfer.external_recipient_empresa && (
+                        <p className="text-xs sm:text-sm text-gray-500">{transfer.external_recipient_empresa}</p>
+                      )}
+                      {transfer.external_recipient_phone && (
+                        <p className="text-xs sm:text-sm text-gray-500">Tel: {transfer.external_recipient_phone}</p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

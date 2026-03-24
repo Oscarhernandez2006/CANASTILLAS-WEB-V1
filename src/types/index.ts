@@ -67,6 +67,7 @@ export type CanastillaStatus =
   | 'DISPONIBLE'
   | 'EN_USO_INTERNO'
   | 'EN_ALQUILER'
+  | 'EN_RETORNO'
   | 'EN_LAVADO'
   | 'EN_REPARACION'
   | 'FUERA_SERVICIO'
@@ -224,6 +225,12 @@ export interface Transfer {
   external_recipient_cedula?: string
   external_recipient_phone?: string
   external_recipient_empresa?: string
+  // Relación con cliente/punto de venta
+  sale_point_id?: string
+  sale_point?: SalePoint
+  // Usuario responsable del retorno
+  return_user_id?: string
+  return_user?: User
   // Campos para devoluciones de traspasos externos
   returned_items_count?: number
   pending_items_count?: number
@@ -429,6 +436,16 @@ export type PermissionKey =
   | 'reportes.ingresos'
   | 'reportes.canastillas_alquiladas'
   | 'reportes.clientes_frecuentes'
+  // Geolocalización
+  | 'geolocalizacion.ver'
+  | 'geolocalizacion.ver_mapa'
+  | 'geolocalizacion.ver_conductores'
+  // Facturación
+  | 'facturacion.ver'
+  | 'facturacion.generar'
+  | 'facturacion.cerrar'
+  // Consultar Facturación
+  | 'consultar_facturacion.ver'
 
 // Módulos del sistema (para agrupar permisos en la UI)
 export type PermissionModule =
@@ -440,6 +457,9 @@ export type PermissionModule =
   | 'clientes'
   | 'usuarios'
   | 'reportes'
+  | 'geolocalizacion'
+  | 'facturacion'
+  | 'consultar_facturacion'
 
 // Estructura de un permiso en la base de datos
 export interface UserPermission {

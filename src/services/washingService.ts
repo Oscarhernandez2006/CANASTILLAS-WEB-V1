@@ -187,7 +187,7 @@ export const receiveOrder = async (
   orderId: string,
   washingStaffId: string
 ): Promise<void> => {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('washing_orders')
     .update({
       status: 'RECIBIDO',
@@ -196,8 +196,12 @@ export const receiveOrder = async (
     })
     .eq('id', orderId)
     .eq('status', 'ENVIADO')
+    .select('id')
 
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('No se pudo recibir la orden porque su estado cambió. Posiblemente fue cancelada o ya recibida. Actualiza la página.')
+  }
 }
 
 // Marcar lavado como completado
@@ -206,7 +210,7 @@ export const markWashingCompleted = async (
   itemUpdates?: { itemId: string; status: WashingItemStatus; notes?: string }[]
 ): Promise<void> => {
   // Actualizar la orden
-  const { error: orderError } = await supabase
+  const { data: orderData, error: orderError } = await supabase
     .from('washing_orders')
     .update({
       status: 'LAVADO_COMPLETADO',
@@ -214,8 +218,12 @@ export const markWashingCompleted = async (
     })
     .eq('id', orderId)
     .eq('status', 'RECIBIDO')
+    .select('id')
 
   if (orderError) throw orderError
+  if (!orderData || orderData.length === 0) {
+    throw new Error('No se pudo marcar como completado porque el estado de la orden cambió. Posiblemente fue cancelada. Actualiza la página.')
+  }
 
   // Actualizar items si se proporcionan
   if (itemUpdates && itemUpdates.length > 0) {
@@ -246,7 +254,7 @@ export const deliverOrder = async (orderId: string): Promise<string> => {
   // Generar número de remisión de devolución
   const remisionNumber = await generateRemisionNumber('DEVOLUCION')
 
-  const { error } = await supabase
+  const { data: deliverData, error } = await supabase
     .from('washing_orders')
     .update({
       status: 'ENTREGADO',
@@ -255,8 +263,12 @@ export const deliverOrder = async (orderId: string): Promise<string> => {
     })
     .eq('id', orderId)
     .eq('status', 'LAVADO_COMPLETADO')
+    .select('id')
 
   if (error) throw error
+  if (!deliverData || deliverData.length === 0) {
+    throw new Error('No se pudo entregar la orden porque su estado cambió. Posiblemente fue cancelada. Actualiza la página.')
+  }
 
   return remisionNumber
 }
@@ -275,7 +287,7 @@ export const confirmReception = async (orderId: string): Promise<void> => {
   const canastillaIds = order.washing_items?.map((item: any) => item.canastilla_id) || []
 
   // Actualizar la orden
-  const { error: orderError } = await supabase
+  const { data: confirmData, error: orderError } = await supabase
     .from('washing_orders')
     .update({
       status: 'CONFIRMADO',
@@ -283,8 +295,12 @@ export const confirmReception = async (orderId: string): Promise<void> => {
     })
     .eq('id', orderId)
     .eq('status', 'ENTREGADO')
+    .select('id')
 
   if (orderError) throw orderError
+  if (!confirmData || confirmData.length === 0) {
+    throw new Error('No se pudo confirmar la recepción porque el estado de la orden cambió. Actualiza la página.')
+  }
 
   // Actualizar estado de canastillas a DISPONIBLE
   if (canastillaIds.length > 0) {
@@ -318,8 +334,8 @@ export const cancelOrder = async (
 
   const canastillaIds = order.washing_items?.map((item: any) => item.canastilla_id) || []
 
-  // Actualizar la orden
-  const { error: orderError } = await supabase
+  // Actualizar la orden - incluir validación de status en WHERE para evitar race condition
+  const { data: updateResult, error: orderError } = await supabase
     .from('washing_orders')
     .update({
       status: 'CANCELADO',
@@ -327,8 +343,14 @@ export const cancelOrder = async (
       cancellation_reason: cancellationReason,
     })
     .eq('id', orderId)
+    .in('status', ['ENVIADO', 'RECIBIDO'])
+    .select('id')
 
   if (orderError) throw orderError
+
+  if (!updateResult || updateResult.length === 0) {
+    throw new Error('No se pudo cancelar la orden porque su estado cambió. Otro usuario ya la procesó. Por favor actualiza la página.')
+  }
 
   // Restaurar estado de canastillas a DISPONIBLE
   if (canastillaIds.length > 0) {

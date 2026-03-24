@@ -96,7 +96,7 @@ export function PermisosPage() {
         {/* Filtros */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-1 min-w-[250px]">
+            <div className="flex-1 min-w-0 sm:min-w-[250px]">
               <input
                 type="text"
                 placeholder="Buscar por nombre o email..."

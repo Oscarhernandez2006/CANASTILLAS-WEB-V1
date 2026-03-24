@@ -6,7 +6,6 @@ import { C, ACCENT, loadLogoBase64, drawHeader, drawSectionTitle, drawInfoCard, 
 export const generateRemisionPDF = async (rental: Rental, remisionNumber: string, signatureData?: SignatureData) => {
   const doc = new jsPDF()
   const accent = ACCENT.blue.main
-  const pageHeight = doc.internal.pageSize.height
 
   // Header profesional
   const logoBase64 = await loadLogoBase64()
@@ -38,19 +37,19 @@ export const generateRemisionPDF = async (rental: Rental, remisionNumber: string
     : 'No especificada'
   const estimatedDays = rental.estimated_days || 0
   
-  // Tabla de condiciones
+  // Tabla de condiciones compacta
   autoTable(doc, {
     startY: yPos,
     head: [['FECHA DE ENTREGA', 'FECHA ESTIMADA RETORNO', 'DÍAS ESTIMADOS']],
     body: [[startDate, estimatedReturnDate, `${estimatedDays} días`]],
     theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 5, textColor: [...C.dark] },
-    headStyles: { fillColor: [...C.light], textColor: [...C.medium], fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
-    bodyStyles: { fontStyle: 'bold', fontSize: 10, halign: 'center', fillColor: [255, 255, 255] },
+    styles: { fontSize: 8, cellPadding: 3, textColor: [...C.dark] },
+    headStyles: { fillColor: [...C.light], textColor: [...C.medium], fontStyle: 'bold', fontSize: 7, halign: 'center' },
+    bodyStyles: { fontStyle: 'bold', fontSize: 9, halign: 'center', fillColor: [255, 255, 255] },
     columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 60 }, 2: { cellWidth: 60 } },
   })
   
-  yPos = (doc as any).lastAutoTable.finalY + 8
+  yPos = (doc as any).lastAutoTable.finalY + 5
   
   // Canastillas entregadas
   yPos = drawSectionTitle(doc, 'CANASTILLAS ENTREGADAS', yPos, accent)
@@ -97,51 +96,46 @@ export const generateRemisionPDF = async (rental: Rental, remisionNumber: string
     },
   })
   
-  yPos = (doc as any).lastAutoTable.finalY + 10
+  yPos = (doc as any).lastAutoTable.finalY + 6
   
   // Valores del alquiler
   const canastillasCount = rental.rental_items?.length || 0
   const dailyRate = rental.daily_rate
   const estimatedTotal = estimatedDays > 0 ? canastillasCount * dailyRate * estimatedDays : 0
   
-  if (yPos > pageHeight - 75 - 50) {
-    doc.addPage()
-    yPos = 20
-  }
-  
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.3)
   doc.line(15, yPos, 195, yPos)
-  yPos += 7
+  yPos += 5
 
   drawDetailLine(doc, 'Cantidad de canastillas:', `${canastillasCount} unidades`, yPos)
   yPos += 5
   drawDetailLine(doc, 'Tarifa diaria por canastilla:', `$${dailyRate.toLocaleString('es-CO')}`, yPos)
   yPos += 5
   drawDetailLine(doc, 'Días estimados:', `${estimatedDays} días`, yPos)
-  yPos += 8
+  yPos += 7
 
   drawTotalBox(doc, 'TOTAL ESTIMADO:', `$${estimatedTotal.toLocaleString('es-CO')} COP`, yPos, accent)
-  yPos += 16
+  yPos += 14
   
   // Observaciones
-  doc.setFontSize(7.5)
+  doc.setFontSize(7)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...C.dark)
   doc.text('OBSERVACIONES:', 15, yPos)
-  yPos += 4
+  yPos += 3.5
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...C.medium)
-  doc.setFontSize(7)
+  doc.setFontSize(6.5)
   const observaciones = [
     '• El valor final se calculará según los días reales de uso.',
     '• Las canastillas deben devolverse en las mismas condiciones.',
     '• El cliente es responsable de cualquier daño o pérdida.',
   ]
-  observaciones.forEach((obs) => { doc.text(obs, 15, yPos); yPos += 4 })
+  observaciones.forEach((obs) => { doc.text(obs, 15, yPos); yPos += 3.5 })
 
-  // Firmas
-  drawSignatures(doc, signatureData, ['ENTREGA', 'RECIBE'])
+  // Firma - solo quien entrega (pasar yPos para evitar solapamientos)
+  drawSignatures(doc, signatureData, ['ENTREGADO POR'], yPos)
 
   // Footer
   drawFooter(doc, accent)

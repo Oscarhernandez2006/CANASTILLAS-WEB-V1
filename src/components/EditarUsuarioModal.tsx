@@ -137,12 +137,12 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
 
         {/* Modal */}
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+          className="inline-block align-bottom bg-white rounded-lg text-left shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-w-[calc(100%-2rem)] sm:max-w-lg mx-4 sm:mx-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-primary-600 px-6 py-4">
+          <div className="bg-primary-600 px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">
                 Editar Usuario
@@ -150,7 +150,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
               <button
                 type="button"
                 onClick={handleClose}
-                className="text-white hover:text-gray-200"
+                className="p-1 text-white hover:text-gray-200 rounded-lg"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -161,7 +161,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
 
           {/* Body */}
           <form onSubmit={handleSubmit}>
-            <div className="px-6 py-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-3 sm:space-y-4 max-h-[70vh] overflow-y-auto">
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg">
                   <p className="text-sm">{error}</p>
@@ -176,7 +176,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
               </div>
 
               {/* Nombre y Apellido */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Nombre *
@@ -254,7 +254,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <DynamicSelect
                     label="Ubicación"
@@ -287,7 +287,7 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
             </div>
 
             {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 flex items-center justify-end space-x-3">
+            <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-end space-x-3">
               <Button
                 type="button"
                 variant="outline"

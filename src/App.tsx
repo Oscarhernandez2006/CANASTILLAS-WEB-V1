@@ -15,6 +15,9 @@ import { InventarioPage } from './pages/InventarioPage'
 import { PermisosPage } from './pages/PermisosPage'
 import { ReportesPage } from './pages/ReportesPage'
 import { TrazabilidadPage } from './pages/TrazabilidadPage'
+import { GeolocalizacionPage } from './pages/GeolocalizacionPage'
+import { FacturacionPage } from './pages/FacturacionPage'
+import { ConsultarFacturacionPage } from './pages/ConsultarFacturacionPage'
 
 // Componente para rutas protegidas
 function ProtectedRoute({ children, requirePermission }: { children: React.ReactNode, requirePermission?: () => boolean }) {
@@ -121,6 +124,24 @@ function App() {
             </ProtectedRoute>
           } 
         />
+
+        <Route
+          path="/facturacion"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessFacturacion}>
+              <FacturacionPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/consultar-facturacion"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessConsultarFacturacion}>
+              <ConsultarFacturacionPage />
+            </ProtectedRoute>
+          }
+        />
         
         <Route
           path="/usuarios"
@@ -154,6 +175,15 @@ function App() {
           element={
             <ProtectedRoute>
               <TrazabilidadPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/geolocalizacion"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessGeolocalizacion}>
+              <GeolocalizacionPage />
             </ProtectedRoute>
           }
         />

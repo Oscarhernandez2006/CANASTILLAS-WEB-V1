@@ -125,7 +125,7 @@ export function InventarioDetallado() {
   return (
     <div className="space-y-6">
       {/* Resumen general */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -223,7 +223,7 @@ export function InventarioDetallado() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     {canastillasCliente.slice(0, 8).map((canastilla) => (
                       <div key={canastilla.id} className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
                         {canastilla.codigo}

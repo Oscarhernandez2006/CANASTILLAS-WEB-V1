@@ -29,6 +29,8 @@ export function Inventario() {
   const [canastillasDisponibles, setCanastillasDisponibles] = useState(0)
   const [canastillasEnTraspaso, setCanastillasEnTraspaso] = useState(0)
   const [canastillasEnLavado, setCanastillasEnLavado] = useState(0)
+  const [canastillasEnRetorno, setCanastillasEnRetorno] = useState(0)
+  const [recibiendoRetorno, setRecibiendoRetorno] = useState(false)
 
   // Verificar si el usuario es super_admin
   const isSuperAdmin = user?.role === 'super_admin'
@@ -122,6 +124,10 @@ export function Inventario() {
       const canastillasStatusLavado = todasLasCanastillas.filter(c => c.status === 'EN_LAVADO')
       const enLavadoCount = canastillasStatusLavado.length
 
+      // Canastillas con status EN_RETORNO
+      const canastillasStatusRetorno = todasLasCanastillas.filter(c => c.status === 'EN_RETORNO')
+      const enRetornoCount = canastillasStatusRetorno.length
+
       // De las disponibles, cuántas están retenidas en traspasos pendientes
       const retenidasCount = canastillasStatusDisponible.filter(c =>
         canastillasRetenidas.includes(c.id)
@@ -134,6 +140,7 @@ export function Inventario() {
       setCanastillasEnTraspaso(retenidasCount)
       setCanastillasDisponibles(disponiblesCount)
       setCanastillasEnLavado(enLavadoCount)
+      setCanastillasEnRetorno(enRetornoCount)
 
       // 4. Filtrar canastillas para lotes (solo las NO retenidas, con status DISPONIBLE)
       const canastillasParaLotes = canastillasStatusDisponible.filter(c =>
@@ -204,9 +211,9 @@ export function Inventario() {
 
       // Convertir a array y ordenar
       const estadoOrden: Record<string, number> = {
-        'DISPONIBLE': 0, 'EN_ALQUILER': 1, 'EN_LAVADO': 2,
-        'EN_USO_INTERNO': 3, 'EN_REPARACION': 4,
-        'FUERA_SERVICIO': 5, 'EXTRAVIADA': 6, 'DADA_DE_BAJA': 7,
+        'DISPONIBLE': 0, 'EN_ALQUILER': 1, 'EN_RETORNO': 2, 'EN_LAVADO': 3,
+        'EN_USO_INTERNO': 4, 'EN_REPARACION': 5,
+        'FUERA_SERVICIO': 6, 'EXTRAVIADA': 7, 'DADA_DE_BAJA': 8,
       }
       let lotesArray: LoteItem[] = Array.from(lotesMap.values()).sort((a, b) => {
         // Primero por estado
@@ -239,10 +246,50 @@ export function Inventario() {
     }
   }
 
+  const recibirCanastillasEnRetorno = async () => {
+    if (!user) return
+    try {
+      setRecibiendoRetorno(true)
+      setError(null)
+
+      // Obtener IDs de canastillas EN_RETORNO del usuario actual
+      const { data: canastillasRetorno, error: fetchErr } = await supabase
+        .from('canastillas')
+        .select('id')
+        .eq('status', 'EN_RETORNO')
+        .eq('current_owner_id', user.id)
+
+      if (fetchErr) throw fetchErr
+      if (!canastillasRetorno || canastillasRetorno.length === 0) {
+        setError('No hay canastillas en retorno para recibir')
+        return
+      }
+
+      const ids = canastillasRetorno.map(c => c.id)
+      const BATCH_SIZE = 50
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE)
+        const { error: updateErr } = await supabase
+          .from('canastillas')
+          .update({ status: 'DISPONIBLE', current_location: 'CANASTILLERO' })
+          .in('id', batch)
+        if (updateErr) throw updateErr
+      }
+
+      await cargarInventario()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al recibir canastillas')
+      console.error('Error recibiendo retorno:', err)
+    } finally {
+      setRecibiendoRetorno(false)
+    }
+  }
+
   const getEstadoLabel = (estado: string): string => {
     const labels: Record<string, string> = {
       'DISPONIBLE': '✅ Disponible',
       'EN_ALQUILER': '🔄 En Alquiler',
+      'EN_RETORNO': '🚛 En Retorno',
       'EN_LAVADO': '🧼 En Lavado',
       'EN_USO_INTERNO': '🏢 Uso Interno',
       'EN_REPARACION': '🔧 Reparación',
@@ -257,6 +304,7 @@ export function Inventario() {
     const colors: Record<string, string> = {
       'DISPONIBLE': 'bg-green-50 border-green-200',
       'EN_ALQUILER': 'bg-purple-50 border-purple-200',
+      'EN_RETORNO': 'bg-amber-50 border-amber-200',
       'EN_LAVADO': 'bg-cyan-50 border-cyan-200',
       'EN_USO_INTERNO': 'bg-yellow-50 border-yellow-200',
       'EN_REPARACION': 'bg-orange-50 border-orange-200',
@@ -310,7 +358,7 @@ export function Inventario() {
       )}
 
       {/* Stats Cards */}
-      <div className={`grid grid-cols-2 md:grid-cols-3 ${isSuperAdmin ? 'xl:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-4`}>
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${isSuperAdmin ? 'xl:grid-cols-6' : 'lg:grid-cols-5'} gap-3 sm:gap-4`}>
         <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
           <div>
             <p className="text-gray-600 text-xs sm:text-sm font-medium">Total</p>
@@ -337,6 +385,21 @@ export function Inventario() {
             <p className="text-gray-600 text-xs sm:text-sm font-medium">En Lavado</p>
             <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-cyan-600 mt-1 sm:mt-2">{canastillasEnLavado}</p>
             <p className="text-xs text-gray-500 mt-1 hidden sm:block">En proceso</p>
+          </div>
+        </div>
+        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-amber-50 border-amber-300 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <p className="text-gray-600 text-xs sm:text-sm font-medium">En Retorno</p>
+            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-600 mt-1 sm:mt-2">{canastillasEnRetorno}</p>
+            {canastillasEnRetorno > 0 && (
+              <button
+                onClick={recibirCanastillasEnRetorno}
+                disabled={recibiendoRetorno}
+                className="mt-2 px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {recibiendoRetorno ? 'Recibiendo...' : `Recibir (${canastillasEnRetorno})`}
+              </button>
+            )}
           </div>
         </div>
         {isSuperAdmin && (

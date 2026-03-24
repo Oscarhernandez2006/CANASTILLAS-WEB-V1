@@ -92,7 +92,7 @@ export function ClientesPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex flex-wrap items-center gap-4">
             {/* Buscador */}
-            <div className="flex-1 min-w-[250px]">
+            <div className="flex-1 min-w-0 sm:min-w-[250px]">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -262,7 +262,7 @@ export function ClientesPage() {
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600">Total Clientes</span>

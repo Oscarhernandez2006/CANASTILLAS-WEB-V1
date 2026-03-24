@@ -85,6 +85,28 @@ export const PERMISSIONS_CONFIG: Record<PermissionModule, {
       { key: 'reportes.clientes_frecuentes', label: 'Top Clientes', description: 'Generar ranking de clientes frecuentes' },
     ],
   },
+  geolocalizacion: {
+    label: 'Geolocalización',
+    permissions: [
+      { key: 'geolocalizacion.ver', label: 'Ver Geolocalización', description: 'Acceder al módulo de geolocalización' },
+      { key: 'geolocalizacion.ver_mapa', label: 'Ver Mapa', description: 'Ver el mapa con ubicaciones en tiempo real' },
+      { key: 'geolocalizacion.ver_conductores', label: 'Ver Conductores', description: 'Ver ubicación de conductores y su velocidad' },
+    ],
+  },
+  facturacion: {
+    label: 'Facturación',
+    permissions: [
+      { key: 'facturacion.ver', label: 'Ver Facturación', description: 'Acceder al módulo de facturación mensual' },
+      { key: 'facturacion.generar', label: 'Generar Factura', description: 'Generar y re-generar facturas mensuales' },
+      { key: 'facturacion.cerrar', label: 'Cierre de Factura', description: 'Realizar cierre total de facturas mensuales' },
+    ],
+  },
+  consultar_facturacion: {
+    label: 'Consultar Facturación',
+    permissions: [
+      { key: 'consultar_facturacion.ver', label: 'Ver Consultas', description: 'Consultar facturas cerradas (solo lectura)' },
+    ],
+  },
 }
 
 // Lista de todos los módulos en orden
@@ -97,6 +119,9 @@ export const ALL_MODULES: PermissionModule[] = [
   'clientes',
   'usuarios',
   'reportes',
+  'geolocalizacion',
+  'facturacion',
+  'consultar_facturacion',
 ]
 
 // Lista de todas las claves de permisos

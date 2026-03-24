@@ -30,6 +30,7 @@ interface Transfer {
   }
   transfer_items?: any[]
   items_count?: number // Conteo real de canastillas
+  en_alquiler_count?: number // Canastillas en alquiler dentro del traspaso
 }
 
 export function useTraspasos() {
@@ -38,6 +39,7 @@ export function useTraspasos() {
   const [solicitudesRecibidas, setSolicitudesRecibidas] = useState<Transfer[]>([])
   const [solicitudesEnviadas, setSolicitudesEnviadas] = useState<Transfer[]>([])
   const [historial, setHistorial] = useState<Transfer[]>([])
+  const [devolucionesExternas, setDevolucionesExternas] = useState<Transfer[]>([])
 
   useEffect(() => {
     if (user) {
@@ -65,6 +67,21 @@ export function useTraspasos() {
         return count || 0
       }
 
+      // Función auxiliar para obtener el conteo de canastillas EN_ALQUILER en un traspaso
+      const getEnAlquilerCount = async (transferId: string): Promise<number> => {
+        const { count, error } = await supabase
+          .from('transfer_items')
+          .select('*, canastillas!inner(*)', { count: 'exact', head: true })
+          .eq('transfer_id', transferId)
+          .eq('canastillas.status', 'EN_ALQUILER')
+
+        if (error) {
+          console.error('Error counting en_alquiler items:', error)
+          return 0
+        }
+        return count || 0
+      }
+
       // TRASPASOS RECIBIDOS (pendientes)
       const { data: received, error: receivedError } = await supabase
         .from('transfers')
@@ -86,6 +103,7 @@ export function useTraspasos() {
         (received || []).map(async (t) => ({
           ...t,
           items_count: await getItemsCount(t.id),
+          en_alquiler_count: await getEnAlquilerCount(t.id),
           transfer_items: [] // placeholder vacío
         }))
       )
@@ -111,6 +129,7 @@ export function useTraspasos() {
         (sent || []).map(async (t) => ({
           ...t,
           items_count: await getItemsCount(t.id),
+          en_alquiler_count: await getEnAlquilerCount(t.id),
           transfer_items: [] // placeholder vacío
         }))
       )
@@ -138,13 +157,49 @@ export function useTraspasos() {
         (history || []).map(async (t) => ({
           ...t,
           items_count: await getItemsCount(t.id),
+          en_alquiler_count: await getEnAlquilerCount(t.id),
           transfer_items: [] // placeholder vacío
         }))
       )
 
+      // DEVOLUCIONES EXTERNAS PENDIENTES (todos los traspasos externos con items sin devolver)
+      // Visible para todos los usuarios para que cualquier conductor pueda recoger
+      const { data: externalPending, error: externalError } = await supabase
+        .from('transfers')
+        .select(`
+          *,
+          from_user:from_user_id(first_name, last_name, email),
+          to_user:to_user_id(first_name, last_name, email),
+          sale_point:sale_points(id, name, contact_name, contact_phone, address, city, identification),
+          return_user:return_user_id(first_name, last_name, email)
+        `)
+        .eq('status', 'ACEPTADO')
+        .eq('is_external_transfer', true)
+        .order('responded_at', { ascending: false })
+
+      if (externalError) {
+        console.error('Error fetching external pending returns:', externalError)
+      }
+
+      // Filtrar solo los que tienen items pendientes de devolver
+      const externalWithCounts = await Promise.all(
+        (externalPending || []).map(async (t) => ({
+          ...t,
+          items_count: await getItemsCount(t.id),
+          en_alquiler_count: await getEnAlquilerCount(t.id),
+          transfer_items: []
+        }))
+      )
+
+      const devolucionesPendientes = externalWithCounts.filter(t => {
+        const pending = t.pending_items_count ?? (t.items_count || 0)
+        return pending > 0
+      })
+
       setSolicitudesRecibidas(receivedWithCounts)
       setSolicitudesEnviadas(sentWithCounts)
       setHistorial(historyWithCounts)
+      setDevolucionesExternas(devolucionesPendientes)
     } catch (error) {
       console.error('Error fetching traspasos:', error)
     } finally {
@@ -161,6 +216,7 @@ export function useTraspasos() {
     solicitudesRecibidas,
     solicitudesEnviadas,
     historial,
+    devolucionesExternas,
     refreshTraspasos,
   }
 }

@@ -54,8 +54,8 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
   const getNotificationIcon = (type: string) => {
     if (type === 'TRASPASO_RECIBIDO') {
       return (
-        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-8 h-8 flex-shrink-0 bg-blue-100 rounded-full flex items-center justify-center">
+          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
           </svg>
         </div>
@@ -63,8 +63,8 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
     }
     if (type === 'TRASPASO_ACEPTADO') {
       return (
-        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-8 h-8 flex-shrink-0 bg-green-100 rounded-full flex items-center justify-center">
+          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
@@ -72,16 +72,25 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
     }
     if (type === 'TRASPASO_RECHAZADO') {
       return (
-        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-          <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-8 h-8 flex-shrink-0 bg-red-100 rounded-full flex items-center justify-center">
+          <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
       )
     }
+    if (type === 'TRASPASO_CANCELADO') {
+      return (
+        <div className="w-8 h-8 flex-shrink-0 bg-orange-100 rounded-full flex items-center justify-center">
+          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+        </div>
+      )
+    }
     return (
-      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="w-8 h-8 flex-shrink-0 bg-gray-100 rounded-full flex items-center justify-center">
+        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
       </div>
@@ -93,28 +102,38 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
   return (
     <div 
       ref={panelRef}
-      className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50"
+      className="fixed inset-0 z-[1100] sm:absolute sm:inset-auto sm:right-0 sm:mt-2 w-full sm:w-96 h-full sm:h-auto sm:max-h-[80vh] bg-white rounded-none sm:rounded-xl shadow-2xl border-0 sm:border border-gray-200 flex flex-col"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Notificaciones</h3>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-500">{unreadCount} sin leer</p>
           )}
         </div>
-        {unreadCount > 0 && (
+        <div className="flex items-center gap-3">
+          {unreadCount > 0 && (
+            <button
+              onClick={() => user && markAllAsRead(user.id)}
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+            >
+              Marcar todas
+            </button>
+          )}
           <button
-            onClick={() => user && markAllAsRead(user.id)}
-            className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+            onClick={onClose}
+            className="sm:hidden p-1 text-gray-400 hover:text-gray-600"
           >
-            Marcar todas
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
-        )}
+        </div>
       </div>
 
       {/* Lista de notificaciones */}
-      <div className="max-h-96 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-140px)] sm:max-h-[60vh]">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -132,11 +151,11 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
               <button
                 key={notification.id}
                 onClick={() => handleNotificationClick(notification)}
-                className={`w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors ${
+                className={`w-full px-4 sm:px-6 py-3 sm:py-4 text-left hover:bg-gray-50 transition-colors ${
                   !notification.is_read ? 'bg-blue-50' : ''
                 }`}
               >
-                <div className="flex space-x-3">
+                <div className="flex gap-3">
                   {getNotificationIcon(notification.type)}
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-medium text-gray-900 ${!notification.is_read ? 'font-semibold' : ''}`}>

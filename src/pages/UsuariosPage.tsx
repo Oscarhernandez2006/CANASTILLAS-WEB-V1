@@ -5,7 +5,7 @@ import { CrearUsuarioModal } from '@/components/CrearUsuarioModal'
 import { EditarUsuarioModal } from '@/components/EditarUsuarioModal'
 import { useUsers } from '@/hooks/useUsers'
 import { useAuthStore } from '@/store/authStore'
-import { updateUser, activateUser, deactivateUser } from '@/services/userService'
+import { updateUser, activateUser, deactivateUser, adminChangeUserPassword, deleteUserCompletely } from '@/services/userService'
 import { formatDate } from '@/utils/helpers'
 
 const ROLE_LABELS: { [key: string]: string } = {
@@ -36,6 +36,20 @@ export function UsuariosPage() {
   const [filterRole, setFilterRole] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
+  // Estados para cambio de contraseña
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordUser, setPasswordUser] = useState<any>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
+
+  // Estados para eliminar usuario
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteUser, setDeleteUser] = useState<any>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+
   const { users, loading, refreshUsers } = useUsers()
   const { user: currentUser } = useAuthStore()
 
@@ -58,6 +72,54 @@ export function UsuariosPage() {
       refreshUsers()
     } catch (error: any) {
       alert('❌ Error: ' + error.message)
+    }
+  }
+
+  const handleOpenPasswordModal = (user: any) => {
+    setPasswordUser(user)
+    setNewPassword('')
+    setConfirmPassword('')
+    setShowPassword(false)
+    setShowPasswordModal(true)
+  }
+
+  const handleChangePassword = async () => {
+    if (!passwordUser) return
+    if (newPassword.length < 6) { alert('La contraseña debe tener al menos 6 caracteres'); return }
+    if (newPassword !== confirmPassword) { alert('Las contraseñas no coinciden'); return }
+    setPasswordLoading(true)
+    try {
+      await adminChangeUserPassword(passwordUser.id, newPassword)
+      alert(`✅ Contraseña de ${passwordUser.first_name} ${passwordUser.last_name} actualizada exitosamente`)
+      setShowPasswordModal(false)
+      setPasswordUser(null)
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message)
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  const handleOpenDeleteModal = (user: any) => {
+    setDeleteUser(user)
+    setDeleteConfirmText('')
+    setShowDeleteModal(true)
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return
+    if (deleteConfirmText !== 'ELIMINAR') { alert('Escribe ELIMINAR para confirmar'); return }
+    setDeleteLoading(true)
+    try {
+      await deleteUserCompletely(deleteUser.id)
+      alert(`✅ Usuario ${deleteUser.first_name} ${deleteUser.last_name} eliminado completamente`)
+      setShowDeleteModal(false)
+      setDeleteUser(null)
+      refreshUsers()
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message)
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -277,6 +339,13 @@ export function UsuariosPage() {
                           Editar
                         </button>
                         <button
+                          onClick={() => handleOpenPasswordModal(user)}
+                          disabled={user.id === currentUser?.id}
+                          className={`text-indigo-600 hover:text-indigo-900 ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          Contraseña
+                        </button>
+                        <button
                           onClick={() => handleToggleStatus(user.id, user.is_active)}
                           disabled={user.id === currentUser?.id}
                           className={`${
@@ -288,6 +357,13 @@ export function UsuariosPage() {
                           }`}
                         >
                           {user.is_active ? 'Desactivar' : 'Activar'}
+                        </button>
+                        <button
+                          onClick={() => handleOpenDeleteModal(user)}
+                          disabled={user.id === currentUser?.id}
+                          className={`text-red-600 hover:text-red-900 font-semibold ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          Eliminar
                         </button>
                       </td>
                     </tr>
@@ -370,6 +446,119 @@ export function UsuariosPage() {
         onSuccess={refreshUsers}
         user={selectedUser}
       />
+
+      {/* Modal de Cambiar Contraseña */}
+      {showPasswordModal && passwordUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowPasswordModal(false)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 z-10">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Cambiar Contraseña</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {passwordUser.first_name} {passwordUser.last_name} ({passwordUser.email})
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nueva Contraseña *</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white pr-10"
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {showPassword
+                        ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                        : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>
+                      }
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirmar Contraseña *</label>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
+                />
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" onClick={() => setShowPasswordModal(false)} className="flex-1">Cancelar</Button>
+              <Button
+                onClick={handleChangePassword}
+                loading={passwordLoading}
+                disabled={passwordLoading || newPassword.length < 6 || newPassword !== confirmPassword}
+                className="flex-1"
+              >
+                Cambiar Contraseña
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Eliminar Usuario */}
+      {showDeleteModal && deleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteModal(false)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 z-10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Eliminar Usuario</h3>
+                <p className="text-sm text-red-600">Esta acción es irreversible</p>
+              </div>
+            </div>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
+              <p className="text-sm text-red-800 dark:text-red-300">
+                Se eliminará permanentemente a <strong>{deleteUser.first_name} {deleteUser.last_name}</strong> ({deleteUser.email}):
+              </p>
+              <ul className="text-xs text-red-700 dark:text-red-400 mt-2 space-y-1 ml-4 list-disc">
+                <li>Todos sus permisos asignados</li>
+                <li>Su registro en la base de datos</li>
+                <li>Su cuenta de autenticación</li>
+              </ul>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Escribe <strong className="text-red-600">ELIMINAR</strong> para confirmar
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="ELIMINAR"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="flex-1">Cancelar</Button>
+              <Button
+                onClick={handleDeleteUser}
+                loading={deleteLoading}
+                disabled={deleteLoading || deleteConfirmText !== 'ELIMINAR'}
+                className="flex-1 !bg-red-600 hover:!bg-red-700"
+              >
+                Eliminar Permanentemente
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </DashboardLayout>
   )
 }
