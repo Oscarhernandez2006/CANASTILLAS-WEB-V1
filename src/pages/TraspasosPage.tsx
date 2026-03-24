@@ -585,20 +585,20 @@ export function TraspasosPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[700px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">De</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canastillas</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                      <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {(solicitudesRecibidas || []).map((solicitud) => (
                       <tr key={solicitud.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {solicitud.from_user?.first_name} {solicitud.from_user?.last_name}
                           </div>
@@ -693,7 +693,7 @@ export function TraspasosPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[700px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Para</th>
@@ -739,8 +739,8 @@ export function TraspasosPage() {
                         <td className="px-6 py-4">
                           {getStatusBadge(solicitud.status)}
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end space-x-2">
+                        <td className="px-3 sm:px-6 py-4 text-right">
+                          <div className="flex flex-wrap justify-end gap-1 sm:gap-2">
                             {solicitud.remision_number && (
                               <button
                                 onClick={() => handleVerRemision(solicitud)}
@@ -790,7 +790,7 @@ export function TraspasosPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[700px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">De → Para</th>
@@ -906,7 +906,7 @@ export function TraspasosPage() {
                     <strong>Devoluciones pendientes:</strong> Estas son entregas a clientes externos que aún tienen canastillas por devolver. Cualquier usuario puede registrar la devolución.
                   </p>
                 </div>
-                <table className="w-full">
+                <table className="w-full min-w-[700px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente Externo</th>
