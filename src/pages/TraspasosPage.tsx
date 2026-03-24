@@ -514,7 +514,7 @@ export function TraspasosPage() {
 
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2">
-          <div className="grid grid-cols-4 gap-1 sm:gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2">
             <button
               onClick={() => setActiveTab('solicitudes-recibidas')}
               className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${

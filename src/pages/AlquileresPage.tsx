@@ -409,7 +409,7 @@ export function AlquileresPage() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredActiveRentals.map((rental) => {
                   const currentDays = calculateCurrentDays(rental.start_date)
                   const totalOriginal = (rental as any).items_count ?? rental.rental_items?.length ?? 0

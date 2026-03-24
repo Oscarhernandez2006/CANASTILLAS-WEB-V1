@@ -186,7 +186,7 @@ export function CanastillasPage() {
         </div>
 
         {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
             <p className="text-xs sm:text-sm text-green-600 font-medium">Disponibles</p>
             <p className="text-xl sm:text-2xl font-bold text-green-700 mt-1">
@@ -216,7 +216,7 @@ export function CanastillasPage() {
         {/* Tabla de canastillas */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">

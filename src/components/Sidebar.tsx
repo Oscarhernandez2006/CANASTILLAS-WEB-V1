@@ -289,7 +289,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Mobile sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 transform transition-transform duration-300 ease-in-out lg:hidden touch-pan-y ${
+        className={`fixed inset-y-0 left-0 z-50 w-[85vw] max-w-64 bg-white dark:bg-gray-900 transform transition-transform duration-300 ease-in-out lg:hidden touch-pan-y ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         onClick={(e) => e.stopPropagation()}
