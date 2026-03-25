@@ -101,6 +101,14 @@ export function usePermissions() {
     return hasPermission('consultar_facturacion.ver')
   }, [hasPermission])
 
+  const canAccessCarguePdv = useCallback((): boolean => {
+    return hasPermission('cargue_pdv.ver')
+  }, [hasPermission])
+
+  const canAccessControlPdv = useCallback((): boolean => {
+    return hasPermission('control_pdv.ver')
+  }, [hasPermission])
+
   // ========== COMPATIBILIDAD CON CÓDIGO EXISTENTE ==========
 
   // Para el Sidebar - acceso a canastillas o inventario
@@ -146,6 +154,8 @@ export function usePermissions() {
     canAccessGeolocalizacion,
     canAccessFacturacion,
     canAccessConsultarFacturacion,
+    canAccessCarguePdv,
+    canAccessControlPdv,
 
     // Compatibilidad
     canAccessCanastillasMenu,

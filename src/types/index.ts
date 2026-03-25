@@ -34,6 +34,7 @@ export type UserRole =
   | 'washing_staff'
   | 'logistics'
   | 'conductor'
+  | 'pdv'
   | 'client'
 
 export interface Canastilla {
@@ -446,6 +447,12 @@ export type PermissionKey =
   | 'facturacion.cerrar'
   // Consultar Facturación
   | 'consultar_facturacion.ver'
+  // Cargue Inventario PDV
+  | 'cargue_pdv.ver'
+  | 'cargue_pdv.cargar'
+  // Control Inventario PDV
+  | 'control_pdv.ver'
+  | 'control_pdv.habilitar_extension'
 
 // Módulos del sistema (para agrupar permisos en la UI)
 export type PermissionModule =
@@ -460,6 +467,8 @@ export type PermissionModule =
   | 'geolocalizacion'
   | 'facturacion'
   | 'consultar_facturacion'
+  | 'cargue_pdv'
+  | 'control_pdv'
 
 // Estructura de un permiso en la base de datos
 export interface UserPermission {

@@ -107,6 +107,20 @@ export const PERMISSIONS_CONFIG: Record<PermissionModule, {
       { key: 'consultar_facturacion.ver', label: 'Ver Consultas', description: 'Consultar facturas cerradas (solo lectura)' },
     ],
   },
+  cargue_pdv: {
+    label: 'Cargue Inventario PDV',
+    permissions: [
+      { key: 'cargue_pdv.ver', label: 'Ver Cargue PDV', description: 'Acceder al módulo de cargue de inventario PDV' },
+      { key: 'cargue_pdv.cargar', label: 'Realizar Cargue', description: 'Subir el inventario mensual del punto de venta' },
+    ],
+  },
+  control_pdv: {
+    label: 'Control Inventario PDV',
+    permissions: [
+      { key: 'control_pdv.ver', label: 'Ver Control PDV', description: 'Ver los cargues de inventario de todos los puntos de venta' },
+      { key: 'control_pdv.habilitar_extension', label: 'Habilitar 2da Oportunidad', description: 'Otorgar segunda oportunidad de cargue a un PDV' },
+    ],
+  },
 }
 
 // Lista de todos los módulos en orden
@@ -122,6 +136,8 @@ export const ALL_MODULES: PermissionModule[] = [
   'geolocalizacion',
   'facturacion',
   'consultar_facturacion',
+  'cargue_pdv',
+  'control_pdv',
 ]
 
 // Lista de todas las claves de permisos

@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { usePermissions } from './hooks/usePermissions'
+import { isLastDayOfMonth, hasUploadedThisMonth, hasExtensionAvailable } from './services/pdvInventoryService'
 import { LoginPage } from './pages/LoginPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
@@ -18,6 +19,8 @@ import { TrazabilidadPage } from './pages/TrazabilidadPage'
 import { GeolocalizacionPage } from './pages/GeolocalizacionPage'
 import { FacturacionPage } from './pages/FacturacionPage'
 import { ConsultarFacturacionPage } from './pages/ConsultarFacturacionPage'
+import { CargueInventarioPDVPage } from './pages/CargueInventarioPDVPage'
+import { ControlInventarioPDVPage } from './pages/ControlInventarioPDVPage'
 import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
@@ -53,27 +56,59 @@ function ProtectedRoute({ children, requirePermission }: { children: React.React
   return <>{children}</>
 }
 
-function App() {
-  const { user, loading, initialize } = useAuthStore()
-  const permissions = usePermissions()
+// Componente que bloquea PDV si no ha cargado inventario el último día del mes
+function PdvBlockGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore()
+  const location = useLocation()
+  const [blocked, setBlocked] = useState(false)
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    initialize()
-  }, [initialize])
+    async function checkPdvStatus() {
+      if (!user || user.role !== 'pdv') {
+        setBlocked(false)
+        setChecking(false)
+        return
+      }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
-        </div>
-      </div>
-    )
+      // Solo bloquear el último día del mes
+      if (!isLastDayOfMonth()) {
+        // Verificar si tiene extensión pendiente
+        const ext = await hasExtensionAvailable(user.id)
+        if (ext) {
+          const uploaded = await hasUploadedThisMonth(user.id)
+          setBlocked(!uploaded)
+        } else {
+          setBlocked(false)
+        }
+        setChecking(false)
+        return
+      }
+
+      const uploaded = await hasUploadedThisMonth(user.id)
+      setBlocked(!uploaded)
+      setChecking(false)
+    }
+
+    checkPdvStatus()
+  }, [user, location.pathname])
+
+  if (checking) return null
+
+  // Si está bloqueado y no está en la página de cargue, redirigir
+  if (blocked && location.pathname !== '/cargue-pdv') {
+    return <Navigate to="/cargue-pdv" replace />
   }
 
+  return <>{children}</>
+}
+
+function AppRoutes() {
+  const { user } = useAuthStore()
+  const permissions = usePermissions()
+
   return (
-    <BrowserRouter>
+    <PdvBlockGuard>
       <Routes>
         {/* Rutas públicas */}
         <Route path="/" element={!user ? <LoginPage /> : <Navigate to="/dashboard" />} />
@@ -198,10 +233,57 @@ function App() {
           }
         />
 
+        <Route
+          path="/cargue-pdv"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessCarguePdv}>
+              <CargueInventarioPDVPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/control-pdv"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessControlPdv}>
+              <ControlInventarioPDVPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Ruta 404 */}
         <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} />} />
       </Routes>
       <ReloadPrompt />
+    </PdvBlockGuard>
+  )
+}
+
+function App() {
+  const { loading, initialize } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  // Ocultar splash screen cuando la app termina de cargar
+  useEffect(() => {
+    if (!loading) {
+      const splash = document.getElementById('splash-screen')
+      if (splash) {
+        splash.classList.add('hidden')
+        setTimeout(() => splash.remove(), 500)
+      }
+    }
+  }, [loading])
+
+  if (loading) {
+    return null
+  }
+
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   )
 }

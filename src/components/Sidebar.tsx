@@ -201,6 +201,40 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </Link>
       )}
 
+      {permissions.canAccessCarguePdv() && (
+        <Link
+          to="/cargue-pdv"
+          onClick={handleLinkClick}
+          className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
+            location.pathname === '/cargue-pdv'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span className="font-medium">Cargue Inventario</span>
+        </Link>
+      )}
+
+      {permissions.canAccessControlPdv() && (
+        <Link
+          to="/control-pdv"
+          onClick={handleLinkClick}
+          className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors touch-manipulation ${
+            location.pathname === '/control-pdv'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+          <span className="font-medium">Control PDV</span>
+        </Link>
+      )}
+
       {user?.role === 'super_admin' && (
         <Link
           to="/permisos"

@@ -13,6 +13,8 @@ const ROLE_LABELS: { [key: string]: string } = {
   admin: 'Administrador',
   supervisor: 'Supervisor',
   logistics: 'Logística',
+  conductor: 'Conductor',
+  pdv: 'PDV',
   operator: 'Operador',
   washing_staff: 'Personal de Lavado',
   client: 'Cliente',
@@ -23,6 +25,8 @@ const ROLE_COLORS: { [key: string]: string } = {
   admin: 'bg-blue-100 text-blue-800',
   supervisor: 'bg-green-100 text-green-800',
   logistics: 'bg-yellow-100 text-yellow-800',
+  conductor: 'bg-orange-100 text-orange-800',
+  pdv: 'bg-rose-100 text-rose-800',
   operator: 'bg-gray-100 text-gray-800',
   washing_staff: 'bg-cyan-100 text-cyan-800',
   client: 'bg-pink-100 text-pink-800',
@@ -296,12 +300,13 @@ export function UsuariosPage() {
                           value={user.role}
                           onChange={(e) => handleChangeRole(user.id, e.target.value)}
                           disabled={user.id === currentUser?.id}
-                          className={`text-xs font-medium px-3 py-1 rounded-full ${ROLE_COLORS[user.role]} ${
+                          className={`text-xs font-medium px-3 py-1 rounded-full border-0 ${ROLE_COLORS[user.role]} ${
                             user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'
                           }`}
+                          style={{ colorScheme: 'light' }}
                         >
                           {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
+                            <option key={value} value={value} className="bg-white text-gray-900 text-sm">{label}</option>
                           ))}
                         </select>
                       </td>

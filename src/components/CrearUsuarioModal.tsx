@@ -17,6 +17,7 @@ const ROLES = [
   { value: 'supervisor', label: 'Supervisor', description: 'Ver y editar (sin eliminar)' },
   { value: 'logistics', label: 'Logística', description: 'Gestión de traspasos y alquileres' },
   { value: 'conductor', label: 'Conductor', description: 'Transporte y entrega de canastillas' },
+  { value: 'pdv', label: 'PDV', description: 'Punto de venta' },
   { value: 'operator', label: 'Operador', description: 'Solo lectura' },
   { value: 'washing_staff', label: 'Personal de Lavado', description: 'Gestión de lavado de canastillas' },
   { value: 'client', label: 'Cliente', description: 'Acceso limitado' },

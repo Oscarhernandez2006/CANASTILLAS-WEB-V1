@@ -23,6 +23,7 @@ const ROLE_COLORS: Record<string, string> = {
   logistics: '#F97316',
   washing_staff: '#06B6D4',
   client: '#6B7280',
+  pdv: '#EC4899',
   sale_point: '#EC4899',
 }
 
@@ -35,6 +36,7 @@ const ROLE_LABELS: Record<string, string> = {
   logistics: 'Logística',
   washing_staff: 'Lavado',
   client: 'Cliente',
+  pdv: 'PDV',
   sale_point: 'Punto de Venta',
 }
 
