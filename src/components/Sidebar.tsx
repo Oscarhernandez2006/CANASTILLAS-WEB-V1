@@ -329,10 +329,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center space-x-2">
-              <img src="/logo.png" alt="Santacruz" className="h-8" />
-              <span className="text-lg font-bold text-primary-600">SANTACRUZ</span>
+          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-slate-50 to-white dark:from-gray-800 dark:to-gray-900">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 p-[2px] shadow-md shadow-primary-500/20">
+                  <div className="w-full h-full rounded-[10px] bg-white dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                    <img src="/logo.png" alt="Santacruz" className="h-6 w-6 object-contain" />
+                  </div>
+                </div>
+              </div>
+              <div className="leading-none">
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-[0.15em]">Grupo</p>
+                <p className="text-base font-extrabold tracking-tight bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">Santacruz</p>
+              </div>
             </div>
             <button
               type="button"
@@ -359,14 +368,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-shrink-0">
         <div className="flex flex-col w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
-          <div className="flex flex-col items-center justify-center h-20 px-6 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
-              Grupo Empresarial
-            </p>
-            <div className="flex items-center space-x-2">
-              <img src="/logo.png" alt="Santacruz" className="h-8" />
-              <span className="text-xl font-bold text-primary-600">SANTACRUZ</span>
+          <div className="flex flex-col items-center justify-center py-5 px-6 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-b from-slate-50 via-white to-white dark:from-gray-800 dark:via-gray-900 dark:to-gray-900">
+            <div className="relative mb-2">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 p-[2px] shadow-lg shadow-primary-500/25">
+                <div className="w-full h-full rounded-[14px] bg-white dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                  <img src="/logo.png" alt="Santacruz" className="h-7 w-7 object-contain" />
+                </div>
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
             </div>
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Grupo Empresarial</p>
+            <p className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">SANTACRUZ</p>
+            <div className="mt-1.5 w-12 h-[2px] rounded-full bg-gradient-to-r from-transparent via-primary-400 to-transparent"></div>
           </div>
           <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
             <NavContent />
