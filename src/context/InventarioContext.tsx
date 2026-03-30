@@ -1,3 +1,7 @@
+/**
+ * @module InventarioContext
+ * @description Contexto de React para atributos dinámicos de canastillas (colores, tamaños, formas, ubicaciones, áreas, condiciones).
+ */
 import React, { createContext, useContext, useState, useCallback } from 'react'
 
 interface InventarioContextType {

@@ -1,3 +1,9 @@
+/**
+ * @module useAuditLogs
+ * @description Hook para obtener y filtrar logs de auditoría del sistema.
+ * Proporciona paginación, filtros por módulo, acción, usuario y rango de fechas,
+ * y funciones para limpiar filtros y refrescar datos.
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { getAuditLogs } from '@/services/auditService'
 import type { AuditLog } from '@/types'
@@ -11,6 +17,20 @@ interface AuditFilters {
   search: string
 }
 
+/**
+ * Hook que gestiona la obtención y filtrado de logs de auditoría.
+ * @returns Objeto con logs, estado de carga, paginación, filtros y funciones de control.
+ * @returns {AuditLog[]} logs - Lista de registros de auditoría de la página actual.
+ * @returns {boolean} loading - Indica si se están cargando los datos.
+ * @returns {number} totalCount - Total de registros que coinciden con los filtros.
+ * @returns {number} page - Página actual (base 0).
+ * @returns {number} totalPages - Total de páginas disponibles.
+ * @returns {AuditFilters} filters - Filtros activos.
+ * @returns {Function} setPage - Cambia la página actual.
+ * @returns {Function} updateFilter - Actualiza un filtro específico.
+ * @returns {Function} clearFilters - Limpia todos los filtros.
+ * @returns {Function} refetch - Recarga los datos.
+ */
 export function useAuditLogs() {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)

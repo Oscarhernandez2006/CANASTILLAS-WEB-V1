@@ -1,3 +1,4 @@
+/** @module Input @description Componente de input reutilizable con soporte para label y errores. */
 import { InputHTMLAttributes, forwardRef } from 'react'
 import { cn } from '@/utils/helpers'
 

@@ -1,17 +1,42 @@
+/**
+ * @module pdvInventoryService
+ * @description Servicio de gestión del cargue de inventario mensual por usuarios PDV (Puntos de Venta).
+ * 
+ * Los usuarios PDV deben cargar su inventario el último día de cada mes.
+ * Si no lo hacen, el sistema los bloquea hasta que completen el cargue.
+ * Los administradores pueden otorgar extensiones de plazo.
+ * 
+ * Tablas involucradas: `pdv_inventory_uploads`, `pdv_inventory_upload_items`, `pdv_upload_extensions`.
+ */
+
 import { supabase } from '@/lib/supabase'
 
 // ========== UTILIDADES DE FECHA ==========
 
+/**
+ * Calcula el último día de un mes específico.
+ * @param year - Año
+ * @param month - Mes (1-12)
+ * @returns Número del último día del mes
+ */
 export function getLastDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
+/**
+ * Verifica si hoy es el último día del mes actual.
+ * @returns true si hoy es el último día
+ */
 export function isLastDayOfMonth(): boolean {
   const now = new Date()
   const lastDay = getLastDayOfMonth(now.getFullYear(), now.getMonth() + 1)
   return now.getDate() === lastDay
 }
 
+/**
+ * Calcula cuántos días faltan hasta el último día del mes actual.
+ * @returns Número de días restantes
+ */
 export function getDaysUntilLastDay(): number {
   const now = new Date()
   const year = now.getFullYear()
@@ -20,6 +45,10 @@ export function getDaysUntilLastDay(): number {
   return lastDay - now.getDate()
 }
 
+/**
+ * Obtiene el período actual (mes y año).
+ * @returns Objeto con month (1-12) y year
+ */
 export function getCurrentPeriod(): { month: number; year: number } {
   const now = new Date()
   return { month: now.getMonth() + 1, year: now.getFullYear() }
@@ -27,12 +56,14 @@ export function getCurrentPeriod(): { month: number; year: number } {
 
 // ========== CARGUE DE INVENTARIO (PDV) ==========
 
+/** Datos de un item del cargue de inventario */
 export interface UploadItem {
   canastilla_size: string
   canastilla_color: string
   cantidad: number
 }
 
+/** Registro de cargue de inventario PDV */
 export interface PdvUpload {
   id: string
   user_id: string
@@ -49,6 +80,7 @@ export interface PdvUpload {
   items?: PdvUploadItem[]
 }
 
+/** Item individual dentro de un cargue de inventario */
 export interface PdvUploadItem {
   id: string
   upload_id: string
@@ -57,6 +89,7 @@ export interface PdvUploadItem {
   cantidad: number
 }
 
+/** Extensión de plazo otorgada a un usuario PDV */
 export interface PdvExtension {
   id: string
   pdv_user_id: string
@@ -70,7 +103,11 @@ export interface PdvExtension {
   created_at: string
 }
 
-// Verificar si el PDV ya cargó inventario este mes
+/**
+ * Verifica si un usuario PDV ya cargó inventario en el mes actual.
+ * @param userId - UUID del usuario PDV
+ * @returns true si ya existe un cargue para este período
+ */
 export async function hasUploadedThisMonth(userId: string): Promise<boolean> {
   const { month, year } = getCurrentPeriod()
   const { data, error } = await supabase
@@ -88,7 +125,11 @@ export async function hasUploadedThisMonth(userId: string): Promise<boolean> {
   return !!data
 }
 
-// Verificar si hay extensión disponible para este mes
+/**
+ * Verifica si existe una extensión de plazo disponible (no usada) para el mes actual.
+ * @param userId - UUID del usuario PDV
+ * @returns La extensión disponible o null
+ */
 export async function hasExtensionAvailable(userId: string): Promise<PdvExtension | null> {
   const { month, year } = getCurrentPeriod()
   const { data, error } = await supabase
@@ -107,7 +148,13 @@ export async function hasExtensionAvailable(userId: string): Promise<PdvExtensio
   return data
 }
 
-// Verificar si el PDV debe cargar inventario (último día del mes y no ha cargado)
+/**
+ * Determina si un usuario PDV debe cargar inventario ahora.
+ * Retorna true si es el último día del mes y no ha cargado,
+ * o si tiene una extensión pendiente.
+ * @param userId - UUID del usuario PDV
+ * @returns true si debe cargar inventario
+ */
 export async function mustUploadNow(userId: string): Promise<boolean> {
   if (!isLastDayOfMonth()) {
     // Si no es último día, revisar si hay extensión pendiente
@@ -122,7 +169,10 @@ export async function mustUploadNow(userId: string): Promise<boolean> {
   return !hasUploaded
 }
 
-// Obtener tipos de canastillas disponibles (agrupados por size y color)
+/**
+ * Obtiene los tipos de canastilla disponibles agrupados por tamaño y color.
+ * @returns Array de tipos con tamaño, color y cantidad total
+ */
 export async function getCanastillaTypes(): Promise<{ size: string; color: string; total: number }[]> {
   const { data, error } = await supabase
     .from('canastillas')
@@ -147,7 +197,15 @@ export async function getCanastillaTypes(): Promise<{ size: string; color: strin
   return Object.values(grouped).sort((a, b) => `${a.size}_${a.color}`.localeCompare(`${b.size}_${b.color}`))
 }
 
-// Crear cargue de inventario
+/**
+ * Crea un cargue de inventario para un usuario PDV.
+ * Si es tardío (fuera del último día), marca la extensión como usada.
+ * @param userId - UUID del usuario PDV
+ * @param userName - Nombre completo
+ * @param userCedula - Cédula del usuario
+ * @param items - Array de items con tipo de canastilla y cantidad
+ * @returns El registro de cargue creado
+ */
 export async function createInventoryUpload(
   userId: string,
   userName: string,
@@ -209,7 +267,10 @@ export async function createInventoryUpload(
 
 // ========== CONTROL DE INVENTARIO (ADMIN) ==========
 
-// Obtener todos los PDV users
+/**
+ * Obtiene todos los usuarios con rol PDV activos.
+ * @returns Array de usuarios PDV
+ */
 export async function getPdvUsers(): Promise<any[]> {
   const { data, error } = await supabase
     .from('users')
@@ -222,7 +283,12 @@ export async function getPdvUsers(): Promise<any[]> {
   return data || []
 }
 
-// Obtener cargues por período
+/**
+ * Obtiene los cargues de inventario de un período específico.
+ * @param month - Mes (1-12)
+ * @param year - Año
+ * @returns Array de cargues con sus items
+ */
 export async function getUploadsByPeriod(month: number, year: number): Promise<PdvUpload[]> {
   const { data, error } = await supabase
     .from('pdv_inventory_uploads')
@@ -238,7 +304,11 @@ export async function getUploadsByPeriod(month: number, year: number): Promise<P
   return data || []
 }
 
-// Obtener cargues de un PDV específico
+/**
+ * Obtiene el historial de cargues de un usuario PDV específico.
+ * @param userId - UUID del usuario
+ * @returns Array de cargues ordenados por período descendente
+ */
 export async function getUploadsByUser(userId: string): Promise<PdvUpload[]> {
   const { data, error } = await supabase
     .from('pdv_inventory_uploads')
@@ -254,7 +324,12 @@ export async function getUploadsByUser(userId: string): Promise<PdvUpload[]> {
   return data || []
 }
 
-// Obtener inventario real de un PDV (basado en traspasos)
+/**
+ * Obtiene el inventario real de canastillas asignadas a un usuario PDV.
+ * Agrupa por tamaño y color para comparar con el inventario declarado.
+ * @param userId - UUID del usuario PDV
+ * @returns Array de tipos con cantidad real
+ */
 export async function getRealInventoryForPdv(userId: string): Promise<{ size: string; color: string; cantidad: number }[]> {
   const { data, error } = await supabase
     .from('canastillas')
@@ -276,7 +351,14 @@ export async function getRealInventoryForPdv(userId: string): Promise<{ size: st
   return Object.values(grouped).sort((a, b) => `${a.size}_${a.color}`.localeCompare(`${b.size}_${b.color}`))
 }
 
-// Otorgar extensión de cargue
+/**
+ * Otorga una extensión de plazo a un usuario PDV para el mes actual.
+ * @param pdvUserId - UUID del usuario PDV
+ * @param grantedBy - UUID del admin que otorga
+ * @param grantedByName - Nombre del admin
+ * @param reason - Razón de la extensión (opcional)
+ * @returns El registro de extensión creado
+ */
 export async function grantUploadExtension(
   pdvUserId: string,
   grantedBy: string,
@@ -302,7 +384,12 @@ export async function grantUploadExtension(
   return data
 }
 
-// Obtener extensiones de un período
+/**
+ * Obtiene las extensiones otorgadas en un período específico.
+ * @param month - Mes (1-12)
+ * @param year - Año
+ * @returns Array de extensiones
+ */
 export async function getExtensionsByPeriod(month: number, year: number): Promise<PdvExtension[]> {
   const { data, error } = await supabase
     .from('pdv_upload_extensions')
@@ -315,7 +402,11 @@ export async function getExtensionsByPeriod(month: number, year: number): Promis
   return data || []
 }
 
-// Obtener el cargue del mes actual del usuario
+/**
+ * Obtiene el cargue del mes actual del usuario (si existe).
+ * @param userId - UUID del usuario PDV
+ * @returns El cargue actual o null
+ */
 export async function getMyCurrentUpload(userId: string): Promise<PdvUpload | null> {
   const { month, year } = getCurrentPeriod()
   const { data, error } = await supabase
@@ -336,7 +427,11 @@ export async function getMyCurrentUpload(userId: string): Promise<PdvUpload | nu
   return data
 }
 
-// Obtener historial de cargues del usuario
+/**
+ * Obtiene el historial de cargues del usuario (máximo 12 meses).
+ * @param userId - UUID del usuario PDV
+ * @returns Array de cargues con sus items
+ */
 export async function getMyUploadHistory(userId: string): Promise<PdvUpload[]> {
   const { data, error } = await supabase
     .from('pdv_inventory_uploads')

@@ -1,3 +1,9 @@
+/**
+ * @module useTraspasos
+ * @description Hook para la interfaz de traspasos con soporte avanzado.
+ * Gestiona solicitudes recibidas/enviadas, historial, devoluciones externas
+ * y conteo real de items para superar límites de Supabase.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -33,6 +39,15 @@ interface Transfer {
   en_alquiler_count?: number // Canastillas en alquiler dentro del traspaso
 }
 
+/**
+ * Hook que gestiona la interfaz completa de traspasos del usuario actual.
+ * @returns Objeto con solicitudes recibidas/enviadas, historial, devoluciones externas y estado de carga.
+ * @returns {Transfer[]} solicitudesRecibidas - Traspasos pendientes dirigidos al usuario.
+ * @returns {Transfer[]} solicitudesEnviadas - Traspasos pendientes creados por el usuario.
+ * @returns {Transfer[]} historial - Historial de traspasos completados.
+ * @returns {Transfer[]} devolucionesExternas - Traspasos externos con devoluciones pendientes.
+ * @returns {boolean} loading - Estado de carga.
+ */
 export function useTraspasos() {
   const { user } = useAuthStore()
   const [loading, setLoading] = useState(true)

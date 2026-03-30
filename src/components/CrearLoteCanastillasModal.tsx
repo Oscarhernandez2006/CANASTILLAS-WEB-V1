@@ -1,3 +1,4 @@
+/** @module CrearLoteCanastillasModal @description Modal para crear un lote de canastillas nuevas con QR automático. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'

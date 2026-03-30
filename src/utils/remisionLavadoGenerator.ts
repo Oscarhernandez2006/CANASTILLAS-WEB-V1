@@ -1,3 +1,7 @@
+/**
+ * @module remisionLavadoGenerator
+ * @description Genera PDFs de remisión de lavado.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { WashingOrder, SignatureData } from '@/types'

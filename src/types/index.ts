@@ -1,3 +1,25 @@
+/**
+ * @module types
+ * @description Definiciones de tipos TypeScript del sistema CANASTILLA WEB.
+ * Contiene todas las interfaces, tipos y enums que definen el contrato de datos
+ * entre el frontend y la base de datos Supabase.
+ * 
+ * Módulos definidos:
+ * - Firmas digitales (SignatureData)
+ * - Usuarios y roles (User, UserRole)
+ * - Canastillas e inventario (Canastilla, CanastillaStatus, CanastillaSize, etc.)
+ * - Clientes/Puntos de venta (SalePoint)
+ * - Alquileres y devoluciones (Rental, RentalItem, RentalReturn, RentalSettings)
+ * - Reportes (ReporteIngresos, ReporteInventario, etc.)
+ * - Atributos dinámicos (CanastillaAttribute, AttributeType)
+ * - Traspasos y devoluciones (Transfer, TransferItem, TransferReturn)
+ * - Lavado (WashingOrder, WashingOrderItem)
+ * - Permisos (UserPermission, PermissionKey, PermissionModule)
+ * - Auditoría (AuditLog)
+ * - Rutas de entrega (DeliveryRoute, DeliveryRouteStop, RouteTrackingPoint)
+ */
+
+/** Datos de firma digital para remisiones y documentos */
 export interface SignatureData {
   firma_entrega_base64: string
   firma_recibe_base64: string

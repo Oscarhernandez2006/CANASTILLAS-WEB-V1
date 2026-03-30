@@ -1,3 +1,7 @@
+/**
+ * @module facturaMensualGenerator
+ * @description Genera PDFs de factura mensual.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { SignatureData, SalePoint } from '@/types'

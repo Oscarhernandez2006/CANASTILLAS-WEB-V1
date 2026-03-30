@@ -1,3 +1,4 @@
+/** @module SearchableUserSelect @description Selector de usuarios con búsqueda y filtrado en tiempo real. */
 import { useState, useRef, useEffect } from 'react'
 
 interface UserOption {

@@ -1,3 +1,4 @@
+/** @module CanastillaModal @description Modal para ver y editar los datos de una canastilla individual. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { Input } from './Input'

@@ -1,3 +1,4 @@
+/** @module CrearRutaModal @description Modal para crear una nueva ruta de entrega con paradas. */
 import { useState } from 'react'
 import type { StopType } from '@/types'
 

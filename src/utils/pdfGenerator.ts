@@ -1,3 +1,7 @@
+/**
+ * @module pdfGenerator
+ * @description Generador base de documentos PDF con jsPDF.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Rental } from '@/types'

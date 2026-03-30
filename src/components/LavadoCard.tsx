@@ -1,3 +1,4 @@
+/** @module LavadoCard @description Tarjeta visual para mostrar una orden de lavado con estado y acciones. */
 import type { WashingOrder } from '@/types'
 
 interface LavadoCardProps {

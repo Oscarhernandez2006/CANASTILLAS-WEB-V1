@@ -1,3 +1,4 @@
+/** @module QRCodeDisplay @description Componente para mostrar y descargar código QR de una canastilla. */
 import QRCode from 'react-qr-code'
 
 interface QRCodeDisplayProps {

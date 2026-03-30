@@ -1,9 +1,28 @@
+/**
+ * @module washingService
+ * @description Servicio de gestión del ciclo completo de órdenes de lavado de canastillas.
+ * 
+ * Flujo del lavado:
+ * 1. ENVIAR: Usuario crea orden → canastillas pasan a estado EN_LAVADO
+ * 2. RECIBIR: Personal de lavado confirma recepción
+ * 3. LAVAR: Personal marca lavado como completado
+ * 4. ENTREGAR: Personal entrega canastillas lavadas
+ * 5. CONFIRMAR: Remitente confirma recepción → canastillas vuelven a DISPONIBLE
+ * 
+ * Cada transición valida el estado actual para evitar race conditions.
+ * Las tablas involucradas son: `washing_orders`, `washing_order_items`, `canastillas`.
+ */
+
 import { supabase } from '@/lib/supabase'
 import type { WashingOrder, WashingOrderStatus, WashingItemStatus } from '@/types'
 
 // ========== FUNCIONES DE CONSULTA ==========
 
-// Obtener todas las órdenes de lavado para un usuario
+/**
+ * Obtiene todas las órdenes de lavado donde el usuario es remitente o personal de lavado.
+ * @param userId - UUID del usuario
+ * @returns Array de órdenes con items y datos de usuario relacionados
+ */
 export const getWashingOrders = async (userId: string): Promise<WashingOrder[]> => {
   const { data, error } = await supabase
     .from('washing_orders')
@@ -23,7 +42,11 @@ export const getWashingOrders = async (userId: string): Promise<WashingOrder[]> 
   return data || []
 }
 
-// Obtener órdenes enviadas por un usuario (como remitente)
+/**
+ * Obtiene las órdenes enviadas por un usuario específico (como remitente).
+ * @param userId - UUID del usuario remitente
+ * @returns Array de órdenes enviadas
+ */
 export const getSentOrders = async (userId: string): Promise<WashingOrder[]> => {
   const { data, error } = await supabase
     .from('washing_orders')
@@ -42,7 +65,11 @@ export const getSentOrders = async (userId: string): Promise<WashingOrder[]> => 
   return data || []
 }
 
-// Obtener órdenes para el personal de lavado (todas las órdenes activas)
+/**
+ * Obtiene todas las órdenes activas para el personal de lavado.
+ * Incluye órdenes en estados: ENVIADO, RECIBIDO, LAVADO_COMPLETADO, ENTREGADO.
+ * @returns Array de órdenes activas
+ */
 export const getOrdersForWashingStaff = async (): Promise<WashingOrder[]> => {
   const { data, error } = await supabase
     .from('washing_orders')
@@ -62,7 +89,11 @@ export const getOrdersForWashingStaff = async (): Promise<WashingOrder[]> => {
   return data || []
 }
 
-// Obtener una orden específica por ID
+/**
+ * Obtiene una orden de lavado específica por su ID con todos los datos relacionados.
+ * @param orderId - UUID de la orden
+ * @returns La orden completa con items y usuarios, o null
+ */
 export const getWashingOrderById = async (orderId: string): Promise<WashingOrder | null> => {
   const { data, error } = await supabase
     .from('washing_orders')
@@ -82,7 +113,12 @@ export const getWashingOrderById = async (orderId: string): Promise<WashingOrder
   return data
 }
 
-// Obtener historial de órdenes completadas/canceladas
+/**
+ * Obtiene el historial de órdenes completadas o canceladas de un usuario.
+ * @param userId - UUID del usuario
+ * @param limit - Cantidad máxima de resultados (default: 50)
+ * @returns Array de órdenes históricas
+ */
 export const getWashingHistory = async (userId: string, limit: number = 50): Promise<WashingOrder[]> => {
   const { data, error } = await supabase
     .from('washing_orders')
@@ -106,7 +142,12 @@ export const getWashingHistory = async (userId: string, limit: number = 50): Pro
 
 // ========== FUNCIONES DE CREACIÓN ==========
 
-// Generar número de remisión
+/**
+ * Genera un número de remisión secuencial para órdenes de lavado.
+ * Formato: RLE000001 (entrega) o RLD000001 (devolución)
+ * @param tipo - Tipo de remisión: 'ENTREGA' o 'DEVOLUCION'
+ * @returns Número de remisión generado
+ */
 const generateRemisionNumber = async (tipo: 'ENTREGA' | 'DEVOLUCION'): Promise<string> => {
   const prefix = tipo === 'ENTREGA' ? 'RLE' : 'RLD'
   const column = tipo === 'ENTREGA' ? 'remision_entrega_number' : 'remision_devolucion_number'
@@ -130,7 +171,15 @@ const generateRemisionNumber = async (tipo: 'ENTREGA' | 'DEVOLUCION'): Promise<s
   return `${prefix}${nextNumber.toString().padStart(6, '0')}`
 }
 
-// Crear nueva orden de lavado
+/**
+ * Crea una nueva orden de lavado. Genera remisión automática y
+ * cambia el estado de las canastillas seleccionadas a EN_LAVADO.
+ * @param senderUserId - UUID del usuario que envía a lavar
+ * @param washingStaffId - UUID del personal de lavado asignado
+ * @param canastillaIds - Array de UUIDs de canastillas a lavar
+ * @param notes - Notas opcionales para la orden
+ * @returns La orden de lavado creada
+ */
 export const createWashingOrder = async (
   senderUserId: string,
   washingStaffId: string,
@@ -182,7 +231,13 @@ export const createWashingOrder = async (
 
 // ========== FUNCIONES DE CAMBIO DE ESTADO ==========
 
-// Recibir orden (personal de lavado confirma recepción)
+/**
+ * Marca una orden como recibida por el personal de lavado.
+ * Solo funciona si la orden está en estado ENVIADO.
+ * @param orderId - UUID de la orden
+ * @param washingStaffId - UUID del personal que recibe
+ * @throws Error si la orden ya fue procesada por otro usuario
+ */
 export const receiveOrder = async (
   orderId: string,
   washingStaffId: string
@@ -204,7 +259,14 @@ export const receiveOrder = async (
   }
 }
 
-// Marcar lavado como completado
+/**
+ * Marca el lavado como completado. Permite actualizar el estado individual
+ * de cada canastilla (LAVADA o DANADA).
+ * Solo funciona si la orden está en estado RECIBIDO.
+ * @param orderId - UUID de la orden
+ * @param itemUpdates - Actualizaciones opcionales por item (estado y notas)
+ * @throws Error si la orden ya fue procesada
+ */
 export const markWashingCompleted = async (
   orderId: string,
   itemUpdates?: { itemId: string; status: WashingItemStatus; notes?: string }[]
@@ -249,7 +311,13 @@ export const markWashingCompleted = async (
   }
 }
 
-// Entregar canastillas lavadas
+/**
+ * Entrega las canastillas lavadas. Genera remisión de devolución.
+ * Solo funciona si la orden está en estado LAVADO_COMPLETADO.
+ * @param orderId - UUID de la orden
+ * @returns Número de remisión de devolución generado
+ * @throws Error si la orden ya fue procesada
+ */
 export const deliverOrder = async (orderId: string): Promise<string> => {
   // Generar número de remisión de devolución
   const remisionNumber = await generateRemisionNumber('DEVOLUCION')
@@ -273,7 +341,13 @@ export const deliverOrder = async (orderId: string): Promise<string> => {
   return remisionNumber
 }
 
-// Confirmar recepción de canastillas lavadas (usuario final)
+/**
+ * Confirma la recepción de canastillas lavadas por el usuario remitente.
+ * Cambia las canastillas de vuelta a estado DISPONIBLE.
+ * Solo funciona si la orden está en estado ENTREGADO.
+ * @param orderId - UUID de la orden
+ * @throws Error si la orden ya fue procesada
+ */
 export const confirmReception = async (orderId: string): Promise<void> => {
   // Obtener los items de la orden
   const { data: order, error: fetchError } = await supabase
@@ -313,7 +387,13 @@ export const confirmReception = async (orderId: string): Promise<void> => {
   }
 }
 
-// Cancelar orden de lavado
+/**
+ * Cancela una orden de lavado y restaura las canastillas a DISPONIBLE.
+ * Solo se puede cancelar si está en estado ENVIADO o RECIBIDO.
+ * @param orderId - UUID de la orden
+ * @param cancellationReason - Razón de la cancelación
+ * @throws Error si la orden ya avanzó de estado
+ */
 export const cancelOrder = async (
   orderId: string,
   cancellationReason?: string
@@ -365,7 +445,10 @@ export const cancelOrder = async (
 
 // ========== FUNCIONES AUXILIARES ==========
 
-// Obtener personal de lavado disponible
+/**
+ * Obtiene la lista de personal de lavado activo.
+ * @returns Array de usuarios con rol washing_staff
+ */
 export const getWashingStaff = async () => {
   const { data, error } = await supabase
     .from('users')
@@ -378,7 +461,12 @@ export const getWashingStaff = async () => {
   return data || []
 }
 
-// Obtener canastillas disponibles para enviar a lavado (con paginación para manejar más de 1000)
+/**
+ * Obtiene las canastillas disponibles de un usuario para enviar a lavado.
+ * Usa paginación para manejar más de 1000 canastillas (límite de Supabase).
+ * @param ownerId - UUID del dueño de las canastillas
+ * @returns Array de canastillas en estado DISPONIBLE
+ */
 export const getAvailableCanastillasForWashing = async (ownerId: string) => {
   const PAGE_SIZE = 1000
   let allCanastillas: any[] = []
@@ -408,7 +496,15 @@ export const getAvailableCanastillasForWashing = async (ownerId: string) => {
   return allCanastillas
 }
 
-// Calcular tiempos de una orden
+/**
+ * Calcula los tiempos de cada etapa de una orden de lavado (en horas).
+ * - waitingTime: tiempo entre envío y recepción
+ * - washingTime: tiempo entre recepción y lavado completado
+ * - deliveryTime: tiempo entre lavado completado y entrega
+ * - totalTime: tiempo total entre envío y confirmación
+ * @param order - Orden de lavado con timestamps
+ * @returns Objeto con los tiempos calculados en horas
+ */
 export const calculateOrderTimes = (order: WashingOrder) => {
   const times: {
     waitingTime?: number
@@ -444,7 +540,11 @@ export const calculateOrderTimes = (order: WashingOrder) => {
   return times
 }
 
-// Obtener estadísticas de lavado
+/**
+ * Obtiene estadísticas de órdenes de lavado agrupadas por estado.
+ * @param userId - UUID del usuario (opcional, si no se proporciona trae todas)
+ * @returns Objeto con conteo por cada estado de lavado
+ */
 export const getWashingStats = async (userId?: string) => {
   let query = supabase
     .from('washing_orders')

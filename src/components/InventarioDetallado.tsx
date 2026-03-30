@@ -1,3 +1,4 @@
+/** @module InventarioDetallado @description Vista detallada del inventario con estadísticas. */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'

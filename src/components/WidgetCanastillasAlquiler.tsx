@@ -1,3 +1,4 @@
+/** @module WidgetCanastillasAlquiler @description Widget resumen de canastillas en alquiler. */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'

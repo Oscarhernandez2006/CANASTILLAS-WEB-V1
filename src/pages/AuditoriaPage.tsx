@@ -1,3 +1,7 @@
+/**
+ * @module AuditoriaPage
+ * @description Visor de registros de auditoría con filtros y exportación a Excel.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { useAuditLogs } from '@/hooks/useAuditLogs'

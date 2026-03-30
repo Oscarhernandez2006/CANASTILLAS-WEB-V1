@@ -1,3 +1,4 @@
+/** @module DateFilter @description Componente de filtro de rango de fechas con presets. */
 interface DateFilterProps {
   selected: string
   onChange: (period: string) => void

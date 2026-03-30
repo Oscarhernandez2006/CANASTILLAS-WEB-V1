@@ -1,3 +1,4 @@
+/** @module Inventario @description Componente de vista de inventario de canastillas. */
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LoadingSpinner } from './LoadingSpinner'

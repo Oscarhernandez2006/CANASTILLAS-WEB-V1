@@ -1,3 +1,7 @@
+/**
+ * @module AlquileresPage
+ * @description Módulo de alquileres: crear, procesar retornos, remisiones PDF, firma digital.
+ */
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

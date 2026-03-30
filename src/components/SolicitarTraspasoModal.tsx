@@ -1,3 +1,4 @@
+/** @module SolicitarTraspasoModal @description Modal para solicitar un traspaso de canastillas a otro usuario. */
 import { useState, useEffect, useRef } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'

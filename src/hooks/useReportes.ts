@@ -1,3 +1,9 @@
+/**
+ * @module useReportes
+ * @description Hook para la generación de reportes del sistema.
+ * Incluye reportes de ingresos por período, ingresos diarios,
+ * canastillas más alquiladas, clientes frecuentes e inventario actual.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { 
@@ -8,6 +14,13 @@ import type {
   IngresosDiarios
 } from '@/types'
 
+/**
+ * Hook que proporciona funciones para generar diversos reportes del sistema.
+ * @returns Objeto con funciones de generación de reportes y estado de carga.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {Function} getReporteIngresos - Reporte de ingresos por rango de fechas.
+ * @returns {Function} getIngresosDiarios - Ingresos agrupados por día.
+ */
 export function useReportes() {
   const [loading, setLoading] = useState(false)
 

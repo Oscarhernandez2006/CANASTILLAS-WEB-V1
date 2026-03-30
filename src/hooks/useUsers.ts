@@ -1,3 +1,9 @@
+/**
+ * @module useUsers
+ * @description Hook para la gestión de usuarios del sistema.
+ * Obtiene la lista completa de usuarios desde Supabase
+ * ordenados por fecha de creación descendente.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -15,6 +21,10 @@ export interface User {
   updated_at: string
 }
 
+/**
+ * Hook que obtiene todos los usuarios registrados en el sistema.
+ * @returns {{ users: User[], loading: boolean, refreshUsers: Function }} Lista de usuarios, estado de carga y función de refresco.
+ */
 export function useUsers() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)

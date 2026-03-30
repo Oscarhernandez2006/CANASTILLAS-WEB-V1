@@ -1,3 +1,7 @@
+/**
+ * @module helpers
+ * @description Funciones auxiliares generales del sistema.
+ */
 import { clsx, type ClassValue } from 'clsx'
 
 // Función para combinar clases de Tailwind

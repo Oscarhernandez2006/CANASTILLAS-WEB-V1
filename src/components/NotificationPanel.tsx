@@ -1,3 +1,4 @@
+/** @module NotificationPanel @description Panel desplegable de notificaciones con realtime y sonido. */
 import { useEffect, useRef } from 'react'
 import { useNotificationStore } from '@/store/notificationStore'
 import { useAuthStore } from '@/store/authStore'

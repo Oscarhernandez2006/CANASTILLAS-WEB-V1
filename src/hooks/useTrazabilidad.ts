@@ -1,3 +1,10 @@
+/**
+ * @module useTrazabilidad
+ * @description Hook para la trazabilidad completa de canastillas.
+ * Agrupa canastillas en lotes por fecha, tamaño, color y tipo de propiedad,
+ * y permite consultar todos los movimientos (traspasos, alquileres, lavados, devoluciones)
+ * de un lote seleccionado.
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -55,6 +62,17 @@ async function queryInBatches<T>(
 // HOOK
 // ============================================================
 
+/**
+ * Hook que gestiona la trazabilidad de canastillas agrupadas en lotes.
+ * @returns Objeto con lotes, movimientos del lote seleccionado y funciones de control.
+ * @returns {LoteGroup[]} lotes - Lotes agrupados de canastillas.
+ * @returns {boolean} loading - Estado de carga de lotes.
+ * @returns {LoteGroup | null} selectedLote - Lote seleccionado actualmente.
+ * @returns {Movimiento[]} movimientos - Movimientos del lote seleccionado.
+ * @returns {boolean} loadingMovimientos - Estado de carga de movimientos.
+ * @returns {Function} fetchMovimientos - Carga los movimientos de un lote.
+ * @returns {Function} refetch - Recarga la lista de lotes.
+ */
 export function useTrazabilidad() {
   const [lotes, setLotes] = useState<LoteGroup[]>([])
   const [loading, setLoading] = useState(true)

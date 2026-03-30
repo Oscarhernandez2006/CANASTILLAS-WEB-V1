@@ -1,3 +1,4 @@
+/** @module DevolucionTraspasoModal @description Modal para procesar la devolución de canastillas de un traspaso externo. */
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'

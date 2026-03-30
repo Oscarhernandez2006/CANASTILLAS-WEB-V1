@@ -1,3 +1,7 @@
+/**
+ * @module CanastillasPage
+ * @description Gestión completa de canastillas: crear lotes, editar, dar salida, escaneo QR.
+ */
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

@@ -1,3 +1,4 @@
+/** @module CanastillaDetailModal @description Modal con detalle completo de una canastilla incluyendo QR e historial. */
 import { QRCodeDisplay } from './QRCodeDisplay'
 import type { Canastilla } from '@/types'
 import { getStatusLabel, getStatusColor, formatDate } from '@/utils/helpers'

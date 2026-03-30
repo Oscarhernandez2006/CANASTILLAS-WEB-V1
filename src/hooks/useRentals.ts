@@ -1,8 +1,21 @@
+/**
+ * @module useRentals
+ * @description Hook para la gestión de alquileres de canastillas.
+ * Obtiene alquileres activos y completados del usuario actual,
+ * con conteo real de items para superar límites de Supabase.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { Rental } from '@/types'
 
+/**
+ * Hook que obtiene los alquileres activos y completados del usuario actual.
+ * @returns Objeto con listas de alquileres, estado de carga y función de refresco.
+ * @returns {Rental[]} activeRentals - Alquileres con estado ACTIVO o PENDIENTE_FIRMA.
+ * @returns {Rental[]} completedRentals - Alquileres con estado RETORNADO, VENCIDO o PERDIDO.
+ * @returns {boolean} loading - Estado de carga.
+ */
 export function useRentals() {
   const [activeRentals, setActiveRentals] = useState<Rental[]>([])
   const [completedRentals, setCompletedRentals] = useState<Rental[]>([])

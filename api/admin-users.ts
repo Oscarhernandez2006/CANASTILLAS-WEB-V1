@@ -1,3 +1,23 @@
+/**
+ * @module admin-users
+ * @description Función serverless de Vercel para operaciones administrativas de usuarios.
+ * Usa la Service Role Key de Supabase (que NUNCA debe exponerse en el frontend).
+ * 
+ * Operaciones soportadas:
+ * - createUser: Crea usuario en auth.users + tabla users
+ * - updateUser: Actualiza datos del usuario
+ * - deleteUser: Elimina usuario completamente
+ * - changePassword: Cambia contraseña de un usuario
+ * - activateUser / deactivateUser: Activa/desactiva cuenta
+ * 
+ * Seguridad:
+ * - Requiere Bearer token JWT válido
+ * - Solo usuarios con rol 'super_admin' o 'admin' pueden acceder
+ * - Verifica que la cuenta esté activa
+ * 
+ * Endpoint: POST /api/admin-users
+ */
+
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 

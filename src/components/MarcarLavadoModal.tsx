@@ -1,3 +1,4 @@
+/** @module MarcarLavadoModal @description Modal para marcar el lavado como completado e indicar estado por canastilla. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { markWashingCompleted } from '@/services/washingService'

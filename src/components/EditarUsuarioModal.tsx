@@ -1,3 +1,4 @@
+/** @module EditarUsuarioModal @description Modal para editar los datos de un usuario existente. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'

@@ -1,3 +1,4 @@
+/** @module CrearUsuarioModal @description Modal para crear un nuevo usuario del sistema. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'

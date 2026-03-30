@@ -1,3 +1,4 @@
+/** @module DetalleRutaModal @description Modal con el detalle de una ruta, paradas y mapa de seguimiento. */
 import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet'

@@ -1,3 +1,4 @@
+/** @module QRScanner @description Escáner de códigos QR usando la cámara del dispositivo. */
 import { useState, useEffect, useRef } from 'react'
 
 interface QRScannerProps {

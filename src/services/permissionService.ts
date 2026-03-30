@@ -1,9 +1,25 @@
+/**
+ * @module permissionService
+ * @description Servicio de gestión de permisos granulares por usuario.
+ * Define la configuración completa de permisos organizados por módulo
+ * y proporciona funciones CRUD para la tabla `user_permissions`.
+ * 
+ * El sistema de permisos funciona así:
+ * - Cada usuario tiene registros en `user_permissions` con pares (permission_key, is_granted)
+ * - `super_admin` bypasea todos los permisos automáticamente
+ * - Los permisos se verifican en el frontend mediante el hook `usePermissions`
+ */
+
 import { supabase } from '@/lib/supabase'
 import type { UserPermission, PermissionKey, PermissionModule, PermissionUpdate } from '@/types'
 
 // ========== CONFIGURACIÓN DE PERMISOS ==========
 
-// Todos los permisos organizados por módulo
+/**
+ * Mapa de configuración de todos los permisos del sistema organizados por módulo.
+ * Cada módulo contiene un label visible y un array de permisos con clave, label y descripción.
+ * Esta configuración alimenta la UI de gestión de permisos (GestionarPermisosModal).
+ */
 export const PERMISSIONS_CONFIG: Record<PermissionModule, {
   label: string
   permissions: { key: PermissionKey; label: string; description: string }[]
@@ -139,7 +155,7 @@ export const PERMISSIONS_CONFIG: Record<PermissionModule, {
   },
 }
 
-// Lista de todos los módulos en orden
+/** Lista ordenada de todos los módulos del sistema */
 export const ALL_MODULES: PermissionModule[] = [
   'dashboard',
   'inventario',
@@ -158,14 +174,18 @@ export const ALL_MODULES: PermissionModule[] = [
   'rutas',
 ]
 
-// Lista de todas las claves de permisos
+/** Array plano con todas las claves de permisos del sistema, derivado de PERMISSIONS_CONFIG */
 export const ALL_PERMISSION_KEYS: PermissionKey[] = ALL_MODULES.flatMap(
   module => PERMISSIONS_CONFIG[module].permissions.map(p => p.key)
 )
 
 // ========== FUNCIONES DE SERVICIO ==========
 
-// Obtener permisos de un usuario específico
+/**
+ * Obtiene los permisos asignados a un usuario específico.
+ * @param userId - UUID del usuario
+ * @returns Array de registros UserPermission
+ */
 export const getUserPermissions = async (userId: string): Promise<UserPermission[]> => {
   try {
     const { data, error } = await supabase
@@ -181,7 +201,10 @@ export const getUserPermissions = async (userId: string): Promise<UserPermission
   }
 }
 
-// Obtener permisos del usuario actual
+/**
+ * Obtiene los permisos del usuario actualmente autenticado.
+ * @returns Array de UserPermission, o array vacío si no hay sesión
+ */
 export const getMyPermissions = async (): Promise<UserPermission[]> => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -200,7 +223,12 @@ export const getMyPermissions = async (): Promise<UserPermission[]> => {
   }
 }
 
-// Actualizar permisos de un usuario (crear o actualizar)
+/**
+ * Actualiza múltiples permisos de un usuario mediante upsert.
+ * Si el permiso ya existe, lo actualiza; si no, lo crea.
+ * @param userId - UUID del usuario
+ * @param permissions - Array de permisos a crear/actualizar
+ */
 export const updateUserPermissions = async (
   userId: string,
   permissions: PermissionUpdate[]
@@ -227,7 +255,12 @@ export const updateUserPermissions = async (
   }
 }
 
-// Establecer un permiso específico
+/**
+ * Establece un permiso individual para un usuario.
+ * @param userId - UUID del usuario
+ * @param permissionKey - Clave del permiso (ej: 'canastillas.ver')
+ * @param isGranted - true para otorgar, false para denegar
+ */
 export const setPermission = async (
   userId: string,
   permissionKey: PermissionKey,
@@ -252,7 +285,11 @@ export const setPermission = async (
   }
 }
 
-// Eliminar todos los permisos de un usuario
+/**
+ * Elimina todos los permisos de un usuario.
+ * Útil al eliminar un usuario o resetear sus permisos.
+ * @param userId - UUID del usuario
+ */
 export const deleteUserPermissions = async (userId: string): Promise<void> => {
   try {
     const { error } = await supabase
@@ -267,7 +304,12 @@ export const deleteUserPermissions = async (userId: string): Promise<void> => {
   }
 }
 
-// Copiar permisos de un usuario a otro
+/**
+ * Copia todos los permisos de un usuario a otro.
+ * Primero obtiene los permisos del origen y luego los aplica al destino.
+ * @param fromUserId - UUID del usuario origen (template)
+ * @param toUserId - UUID del usuario destino
+ */
 export const copyUserPermissions = async (
   fromUserId: string,
   toUserId: string
@@ -291,12 +333,20 @@ export const copyUserPermissions = async (
   }
 }
 
-// Obtener el label de un módulo
+/**
+ * Obtiene el nombre legible de un módulo.
+ * @param module - Clave del módulo
+ * @returns Label del módulo o la clave misma si no se encuentra
+ */
 export const getModuleLabel = (module: PermissionModule): string => {
   return PERMISSIONS_CONFIG[module]?.label || module
 }
 
-// Obtener información de un permiso
+/**
+ * Obtiene la información (label y descripción) de un permiso específico.
+ * @param key - Clave del permiso (ej: 'alquileres.crear')
+ * @returns Objeto con label y description, o null si no se encuentra
+ */
 export const getPermissionInfo = (key: PermissionKey): { label: string; description: string } | null => {
   for (const module of ALL_MODULES) {
     const perm = PERMISSIONS_CONFIG[module].permissions.find(p => p.key === key)

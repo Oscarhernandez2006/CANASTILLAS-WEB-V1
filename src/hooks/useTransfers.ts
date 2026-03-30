@@ -1,3 +1,8 @@
+/**
+ * @module useTransfers
+ * @description Hook para la gestión de traspasos de canastillas entre usuarios.
+ * Obtiene traspasos enviados, recibidos y el historial completo del usuario actual.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -33,6 +38,15 @@ interface Transfer {
   }>
 }
 
+/**
+ * Hook que obtiene los traspasos enviados, recibidos e historial del usuario actual.
+ * @returns Objeto con listas de traspasos por categoría, estado de carga y función de refresco.
+ * @returns {Transfer[]} enviados - Traspasos solicitados por el usuario.
+ * @returns {Transfer[]} recibidos - Traspasos dirigidos al usuario.
+ * @returns {Transfer[]} historial - Todos los traspasos no pendientes del usuario.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {Function} refreshTransfers - Recarga los datos.
+ */
 export function useTransfers() {
   const [enviados, setEnviados] = useState<Transfer[]>([])
   const [recibidos, setRecibidos] = useState<Transfer[]>([])

@@ -1,3 +1,4 @@
+/** @module LocationMap @description Mapa visual de canastillas por ubicación con desglose por estado. */
 import { useState } from 'react'
 import type { LocationData } from '@/hooks/useDashboardStats'
 

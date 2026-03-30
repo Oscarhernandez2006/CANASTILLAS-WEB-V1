@@ -1,3 +1,4 @@
+/** @module BarChart @description Componente wrapper de Recharts para gráfica de barras. */
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 interface BarChartProps {

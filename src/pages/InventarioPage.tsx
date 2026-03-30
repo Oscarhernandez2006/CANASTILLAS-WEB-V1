@@ -1,3 +1,7 @@
+/**
+ * @module InventarioPage
+ * @description Página de inventario de canastillas del usuario actual.
+ */
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Inventario } from '@/components/Inventario'
 

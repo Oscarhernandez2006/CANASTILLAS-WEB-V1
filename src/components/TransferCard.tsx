@@ -1,3 +1,4 @@
+/** @module TransferCard @description Tarjeta visual para mostrar un traspaso con estado y acciones. */
 import { formatDate } from '@/utils/helpers'
 import { Button } from './Button'
 

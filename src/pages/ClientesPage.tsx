@@ -1,3 +1,7 @@
+/**
+ * @module ClientesPage
+ * @description CRUD de clientes y puntos de venta.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

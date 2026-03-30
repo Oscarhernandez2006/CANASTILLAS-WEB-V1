@@ -1,3 +1,9 @@
+/**
+ * @module useFacturacionMensual
+ * @description Hook para la gestión de facturación mensual de alquileres.
+ * Agrupa sub-facturas por cliente y mes, permite generar facturas mensuales consolidadas,
+ * firmar PDFs digitalmente y consultar el historial de facturación.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -53,6 +59,15 @@ export interface ClienteConSubFacturas {
   facturaMensualExistente?: FacturaMensual
 }
 
+/**
+ * Hook que gestiona la facturación mensual consolidada por cliente.
+ * @returns Objeto con clientes, facturas mensuales, mes/año seleccionado y funciones de gestión.
+ * @returns {ClienteConSubFacturas[]} clientes - Clientes con sus sub-facturas del mes.
+ * @returns {FacturaMensual[]} facturasMensuales - Facturas mensuales generadas.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {number} selectedMonth - Mes seleccionado (1-12).
+ * @returns {number} selectedYear - Año seleccionado.
+ */
 export function useFacturacionMensual() {
   const { user } = useAuthStore()
   const [loading, setLoading] = useState(true)

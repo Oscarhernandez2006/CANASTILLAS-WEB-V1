@@ -1,3 +1,11 @@
+/**
+ * @module App
+ * @description Componente raíz de la aplicación. Define el sistema de rutas (React Router),
+ * componentes de protección de rutas (ProtectedRoute), bloqueo de usuarios PDV (PdvBlockGuard)
+ * y la inicialización de la autenticación. Todas las rutas protegidas verifican permisos
+ * mediante el hook usePermissions.
+ */
+
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'

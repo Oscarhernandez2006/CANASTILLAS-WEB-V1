@@ -1,3 +1,7 @@
+/**
+ * @module excelExporter
+ * @description Exportador de datos a formato Excel con xlsx-js-style.
+ */
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 

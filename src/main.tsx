@@ -1,3 +1,9 @@
+/**
+ * @module main
+ * @description Punto de entrada de la aplicación React.
+ * Monta el componente App dentro de React.StrictMode y el proveedor de tema (ThemeProvider).
+ */
+
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'

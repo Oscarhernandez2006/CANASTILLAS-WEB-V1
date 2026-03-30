@@ -1,3 +1,4 @@
+/** @module ConfirmarRecepcionLavadoModal @description Modal para que el remitente confirme la recepción de canastillas lavadas. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { confirmReception, calculateOrderTimes } from '@/services/washingService'

@@ -1,3 +1,7 @@
+/**
+ * @module ThemeContext
+ * @description Contexto de React para el tema visual (claro/oscuro). Actualmente forzado a modo light.
+ */
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 
 type Theme = 'light' | 'dark'

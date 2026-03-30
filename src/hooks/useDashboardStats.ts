@@ -1,3 +1,9 @@
+/**
+ * @module useDashboardStats
+ * @description Hook para obtener las estadísticas del dashboard principal.
+ * Calcula totales de canastillas por estado, ingresos del mes, proyecciones
+ * y distribución por ubicación. Filtra por usuario o muestra todo para super_admin.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -28,6 +34,10 @@ interface DashboardStats {
   loading: boolean
 }
 
+/**
+ * Hook que consulta y calcula las estadísticas generales del dashboard.
+ * @returns {DashboardStats} Objeto con totales de canastillas por estado, ingresos, proyecciones, ubicaciones y estado de carga.
+ */
 export function useDashboardStats() {
   const { user } = useAuthStore()
   const isSuperAdmin = user?.role === 'super_admin'

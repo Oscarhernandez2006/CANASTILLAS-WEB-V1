@@ -1,3 +1,7 @@
+/**
+ * @module ReportesPage
+ * @description Centro de reportes con múltiples tipos y exportación a PDF/Excel.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { supabase } from '@/lib/supabase'

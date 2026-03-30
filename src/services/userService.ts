@@ -1,5 +1,14 @@
+/**
+ * @module userService
+ * @description Servicio de gestión de usuarios del sistema.
+ * Las operaciones que requieren la Service Role Key (crear, eliminar, cambiar contraseña de otros)
+ * se ejecutan a través de la API serverless `/api/admin-users` mediante `callAdminAPI()`.
+ * Las demás operaciones usan el cliente Supabase directamente.
+ */
+
 import { supabase, callAdminAPI } from '@/lib/supabase'
 
+/** Datos requeridos para crear un nuevo usuario */
 export interface CreateUserData {
   email: string
   password: string
@@ -10,6 +19,7 @@ export interface CreateUserData {
   area?: string        // Área del usuario
 }
 
+/** Datos opcionales para actualizar un usuario existente */
 export interface UpdateUserData {
   email?: string
   first_name?: string
@@ -21,7 +31,13 @@ export interface UpdateUserData {
   area?: string        // Área del usuario
 }
 
-// Crear usuario usando API serverless segura
+/**
+ * Crea un nuevo usuario en el sistema usando la API serverless segura.
+ * Crea el usuario en auth.users de Supabase y en la tabla `users`.
+ * @param userData - Datos del usuario a crear
+ * @returns El resultado de la operación con el usuario creado
+ * @throws Error si faltan campos requeridos o falla la creación
+ */
 export const createUser = async (userData: CreateUserData) => {
   try {
     const result = await callAdminAPI('createUser', {
@@ -41,7 +57,10 @@ export const createUser = async (userData: CreateUserData) => {
   }
 }
 
-// Obtener todos los usuarios
+/**
+ * Obtiene todos los usuarios del sistema ordenados por fecha de creación.
+ * @returns Array de usuarios con sus datos básicos
+ */
 export const getAllUsers = async () => {
   try {
     const { data, error } = await supabase
@@ -57,7 +76,12 @@ export const getAllUsers = async () => {
   }
 }
 
-// Actualizar usuario
+/**
+ * Actualiza los datos de un usuario en la tabla `users`.
+ * @param userId - UUID del usuario a actualizar
+ * @param userData - Campos a actualizar
+ * @returns El registro actualizado
+ */
 export const updateUser = async (userId: string, userData: UpdateUserData) => {
   try {
     const { data, error } = await supabase
@@ -75,7 +99,11 @@ export const updateUser = async (userId: string, userData: UpdateUserData) => {
   }
 }
 
-// Desactivar usuario (soft delete)
+/**
+ * Desactiva un usuario (soft delete). El usuario no podrá iniciar sesión.
+ * @param userId - UUID del usuario a desactivar
+ * @returns El registro actualizado
+ */
 export const deactivateUser = async (userId: string) => {
   try {
     const { data, error } = await supabase
@@ -93,7 +121,11 @@ export const deactivateUser = async (userId: string) => {
   }
 }
 
-// Activar usuario
+/**
+ * Reactiva un usuario previamente desactivado.
+ * @param userId - UUID del usuario a activar
+ * @returns El registro actualizado
+ */
 export const activateUser = async (userId: string) => {
   try {
     const { data, error } = await supabase
@@ -111,7 +143,11 @@ export const activateUser = async (userId: string) => {
   }
 }
 
-// Cambiar contraseña (usuario propio)
+/**
+ * Cambia la contraseña del usuario actualmente autenticado.
+ * @param newPassword - Nueva contraseña
+ * @returns Objeto de éxito
+ */
 export const changeUserPassword = async (newPassword: string) => {
   try {
     const { error } = await supabase.auth.updateUser({
@@ -126,7 +162,13 @@ export const changeUserPassword = async (newPassword: string) => {
   }
 }
 
-// Cambiar contraseña de otro usuario (admin) — vía API serverless
+/**
+ * Cambia la contraseña de otro usuario (operación admin).
+ * Se ejecuta vía API serverless con Service Role Key.
+ * @param userId - UUID del usuario objetivo
+ * @param newPassword - Nueva contraseña a asignar
+ * @returns El resultado de la operación
+ */
 export const adminChangeUserPassword = async (userId: string, newPassword: string) => {
   try {
     const result = await callAdminAPI('changePassword', { userId, newPassword })
@@ -137,7 +179,12 @@ export const adminChangeUserPassword = async (userId: string, newPassword: strin
   }
 }
 
-// Eliminar usuario completamente — vía API serverless
+/**
+ * Elimina un usuario completamente del sistema (auth.users + tabla users).
+ * Operación irreversible. Se ejecuta vía API serverless.
+ * @param userId - UUID del usuario a eliminar
+ * @returns El resultado de la operación
+ */
 export const deleteUserCompletely = async (userId: string) => {
   try {
     const result = await callAdminAPI('deleteUser', { userId })

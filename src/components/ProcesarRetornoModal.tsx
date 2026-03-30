@@ -1,3 +1,4 @@
+/** @module ProcesarRetornoModal @description Modal para procesar la devolución total o parcial de un alquiler. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { FirmaDigitalModal } from './FirmaDigitalModal'

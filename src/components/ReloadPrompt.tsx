@@ -1,3 +1,4 @@
+/** @module ReloadPrompt @description Prompt de actualización de la PWA cuando hay nueva versión disponible. */
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 export function ReloadPrompt() {

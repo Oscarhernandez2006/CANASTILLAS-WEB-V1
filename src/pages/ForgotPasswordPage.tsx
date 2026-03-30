@@ -1,3 +1,7 @@
+/**
+ * @module ForgotPasswordPage
+ * @description Página para recuperar contraseña vía email.
+ */
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/Button'

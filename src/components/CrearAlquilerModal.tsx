@@ -1,3 +1,4 @@
+/** @module CrearAlquilerModal @description Modal para crear un nuevo alquiler interno o externo. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'

@@ -1,3 +1,7 @@
+/**
+ * @module facturaDevolucionGenerator
+ * @description Genera PDFs de factura de devolución.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Rental, RentalReturn, Canastilla, SignatureData } from '@/types'

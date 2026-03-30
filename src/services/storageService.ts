@@ -1,8 +1,17 @@
+/**
+ * @module storageService
+ * @description Servicio de almacenamiento de archivos en Supabase Storage.
+ * Maneja la subida de PDFs firmados digitalmente al bucket 'signed-pdfs'.
+ */
+
 import { supabase } from '@/lib/supabase'
 
 /**
- * Sube un PDF firmado a Supabase Storage
- * @returns La URL firmada del archivo subido, o null si falla
+ * Sube un PDF firmado a Supabase Storage y retorna una URL firmada válida por 1 año.
+ * @param pdfBlob - Blob del archivo PDF a subir
+ * @param folder - Carpeta destino dentro del bucket (ej: 'remisiones', 'facturas')
+ * @param fileName - Nombre del archivo (ej: 'REM-000001.pdf')
+ * @returns La URL firmada del archivo subido, o null si falla la operación
  */
 export async function uploadSignedPDF(
   pdfBlob: Blob,

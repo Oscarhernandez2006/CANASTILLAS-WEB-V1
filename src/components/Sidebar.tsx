@@ -1,3 +1,4 @@
+/** @module Sidebar @description Barra lateral de navegación con menú agrupado (Operación, Facturación, Administración) y control de permisos. */
 import { Link, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'

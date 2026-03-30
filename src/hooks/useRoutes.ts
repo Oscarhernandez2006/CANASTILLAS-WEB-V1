@@ -1,3 +1,9 @@
+/**
+ * @module useRoutes
+ * @description Hooks para la gestión de rutas de entrega.
+ * Incluye `useRoutes` (admin/supervisor), `useDriverRoutes` (conductor),
+ * `useRouteTracking` (tracking GPS en ruta) y `useRouteTrackingViewer` (visualización admin).
+ */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import {
@@ -14,7 +20,11 @@ import {
 } from '@/services/routeService'
 import type { DeliveryRoute, DeliveryRouteStop, RouteTrackingPoint } from '@/types'
 
-// Hook para gestión de rutas (admin/supervisor)
+/**
+ * Hook para gestión de rutas desde el panel de admin/supervisor.
+ * Permite crear rutas, asignar conductores, actualizar estado y filtrar por estado/conductor.
+ * @returns Objeto con rutas, conductores disponibles, filtros y funciones de gestión.
+ */
 export function useRoutes() {
   const [routes, setRoutes] = useState<DeliveryRoute[]>([])
   const [loading, setLoading] = useState(true)
@@ -76,7 +86,15 @@ export function useRoutes() {
   }
 }
 
-// Hook para conductor - ver sus rutas asignadas
+/**
+ * Hook para conductores — consulta sus rutas asignadas y gestiona la ruta activa.
+ * @returns Objeto con rutas del conductor, ruta activa y funciones de control.
+ * @returns {DeliveryRoute[]} routes - Rutas asignadas al conductor.
+ * @returns {DeliveryRoute | null} activeRoute - Ruta actualmente en curso.
+ * @returns {Function} startRoute - Inicia una ruta.
+ * @returns {Function} completeRoute - Completa una ruta.
+ * @returns {Function} markStopStatus - Actualiza el estado de una parada.
+ */
 export function useDriverRoutes() {
   const { user } = useAuthStore()
   const [routes, setRoutes] = useState<DeliveryRoute[]>([])
@@ -138,7 +156,12 @@ export function useDriverRoutes() {
   }
 }
 
-// Hook para tracking en tiempo real del conductor durante una ruta
+/**
+ * Hook para tracking GPS en tiempo real del conductor durante una ruta.
+ * Utiliza `navigator.geolocation.watchPosition` y envía puntos al servidor.
+ * @param {string | null} routeId - ID de la ruta a rastrear, o `null` para desactivar.
+ * @returns {{ tracking: boolean, currentPosition: { lat: number, lng: number } | null, startTracking: Function, stopTracking: Function }}
+ */
 export function useRouteTracking(routeId: string | null) {
   const { user } = useAuthStore()
   const watchIdRef = useRef<number | null>(null)
@@ -194,7 +217,12 @@ export function useRouteTracking(routeId: string | null) {
   return { tracking, currentPosition, startTracking, stopTracking }
 }
 
-// Hook para ver tracking de una ruta (admin)
+/**
+ * Hook para visualizar el tracking de una ruta desde el panel de administración.
+ * Realiza polling cada 10 segundos para obtener los puntos de rastreo.
+ * @param {string | null} routeId - ID de la ruta a visualizar, o `null` para desactivar.
+ * @returns {{ points: RouteTrackingPoint[], loading: boolean, refetch: Function }}
+ */
 export function useRouteTrackingViewer(routeId: string | null) {
   const [points, setPoints] = useState<RouteTrackingPoint[]>([])
   const [loading, setLoading] = useState(false)

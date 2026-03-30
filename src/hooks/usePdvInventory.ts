@@ -1,3 +1,9 @@
+/**
+ * @module usePdvInventory
+ * @description Hook para la gestión del inventario de puntos de venta (PDV).
+ * Controla el flujo de cargue mensual obligatorio, extensiones de plazo,
+ * tipos de canastilla disponibles e historial de cargues.
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import {
@@ -15,6 +21,17 @@ import {
   type PdvExtension,
 } from '@/services/pdvInventoryService'
 
+/**
+ * Hook que gestiona el inventario mensual de puntos de venta.
+ * @returns Objeto con estado del cargue, permisos, historial y funciones de envío.
+ * @returns {boolean} isPdv - Si el usuario tiene rol PDV.
+ * @returns {boolean} isLastDay - Si hoy es el último día del mes.
+ * @returns {boolean} hasUploaded - Si ya realizó el cargue este mes.
+ * @returns {boolean} canUpload - Si puede realizar el cargue.
+ * @returns {boolean} isBlocked - Si está bloqueado por no haber hecho el cargue.
+ * @returns {Function} submitUpload - Envía el cargue de inventario.
+ * @returns {Function} getReminderMessage - Obtiene mensaje de recordatorio.
+ */
 export function usePdvInventory() {
   const { user } = useAuthStore()
   const [loading, setLoading] = useState(true)

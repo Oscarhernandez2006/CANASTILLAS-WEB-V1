@@ -1,3 +1,7 @@
+/**
+ * @module TrazabilidadPage
+ * @description Trazabilidad completa del historial de cada canastilla.
+ */
 import { useState, useMemo } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { useTrazabilidad } from '@/hooks/useTrazabilidad'

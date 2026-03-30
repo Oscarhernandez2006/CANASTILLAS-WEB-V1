@@ -1,3 +1,4 @@
+/** @module LoadingSpinner @description Componente de spinner animado para estados de carga. */
 export function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">

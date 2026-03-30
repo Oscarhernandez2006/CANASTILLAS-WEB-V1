@@ -1,3 +1,4 @@
+/** @module Button @description Componente de botón reutilizable con variantes de estilo. */
 import { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/utils/helpers'
 

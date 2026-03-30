@@ -1,3 +1,4 @@
+/** @module DashboardLayout @description Layout principal de la aplicación con sidebar colapsable, header y área de contenido. */
 import { ReactNode, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'

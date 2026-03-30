@@ -1,3 +1,4 @@
+/** @module CrearClienteModal @description Modal para crear un nuevo cliente/punto de venta. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { createSalePoint, updateSalePoint } from '@/services/salePointService'

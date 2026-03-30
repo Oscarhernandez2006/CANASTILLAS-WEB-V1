@@ -1,3 +1,7 @@
+/**
+ * @module ConsultarFacturacionPage
+ * @description Consulta de facturas cerradas (solo lectura).
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { supabase } from '@/lib/supabase'

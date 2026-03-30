@@ -1,3 +1,7 @@
+/**
+ * @module remisionGenerator
+ * @description Genera PDFs de remisión de alquiler.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Rental, SignatureData } from '@/types'

@@ -1,3 +1,4 @@
+/** @module EnviarLavadoModal @description Modal para enviar canastillas a lavado seleccionando personal. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { CanastillaLoteSelector } from './CanastillaLoteSelector'

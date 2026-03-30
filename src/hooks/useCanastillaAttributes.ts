@@ -1,7 +1,22 @@
+/**
+ * @module useCanastillaAttributes
+ * @description Hook para gestionar atributos dinámicos de canastillas (colores, tamaños, formas, etc.).
+ * Permite consultar los valores activos de un tipo de atributo y agregar nuevos valores.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { AttributeType, CanastillaAttribute } from '@/types'
 
+/**
+ * Hook que obtiene y permite agregar atributos dinámicos de canastillas.
+ * @param {AttributeType} attributeType - Tipo de atributo a consultar (ej: 'color', 'size', 'shape').
+ * @returns Objeto con la lista de atributos, estado de carga, errores y funciones de gestión.
+ * @returns {string[]} attributes - Valores activos del atributo.
+ * @returns {boolean} loading - Indica si se están cargando los datos.
+ * @returns {string | null} error - Mensaje de error, si existe.
+ * @returns {Function} addAttribute - Agrega un nuevo valor de atributo.
+ * @returns {Function} refresh - Recarga la lista de atributos.
+ */
 export function useCanastillaAttributes(attributeType: AttributeType) {
   const [attributes, setAttributes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)

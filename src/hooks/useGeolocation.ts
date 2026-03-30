@@ -1,3 +1,9 @@
+/**
+ * @module useGeolocation
+ * @description Hooks para geolocalización del navegador.
+ * Incluye `useGeolocationSender` para enviar la ubicación del usuario actual a Supabase
+ * y `useUserLocations` para consultar en tiempo real las ubicaciones de todos los usuarios.
+ */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -22,7 +28,12 @@ export interface UserLocation {
   canastillas_count?: number
 }
 
-// Hook para ENVIAR la ubicación del usuario actual
+/**
+ * Hook que envía la ubicación GPS del usuario actual a la base de datos en tiempo real.
+ * Utiliza `navigator.geolocation.watchPosition` para rastrear la posición continuamente.
+ * @param {boolean} [enabled=true] - Si es `true`, activa el envío de ubicación.
+ * @returns {{ sending: boolean, error: string | null, permissionState: PermissionState | null }} Estado del envío, errores y estado del permiso de geolocalización.
+ */
 export function useGeolocationSender(enabled: boolean = true) {
   const { user } = useAuthStore()
   const [error, setError] = useState<string | null>(null)
@@ -96,7 +107,12 @@ export function useGeolocationSender(enabled: boolean = true) {
   return { sending, error, permissionState }
 }
 
-// Hook para VER las ubicaciones de todos los usuarios en tiempo real
+/**
+ * Hook que obtiene las ubicaciones de todos los usuarios en tiempo real.
+ * Se suscribe a cambios en la tabla `user_locations` vía Supabase Realtime
+ * y refresca cada 30 segundos como fallback.
+ * @returns {{ locations: UserLocation[], loading: boolean, refetch: Function }} Ubicaciones, estado de carga y función de refresco.
+ */
 export function useUserLocations() {
   const [locations, setLocations] = useState<UserLocation[]>([])
   const [loading, setLoading] = useState(true)

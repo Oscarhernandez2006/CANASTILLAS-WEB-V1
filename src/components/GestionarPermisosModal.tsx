@@ -1,3 +1,4 @@
+/** @module GestionarPermisosModal @description Modal para gestionar los permisos granulares de un usuario. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import {

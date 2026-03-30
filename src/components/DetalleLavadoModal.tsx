@@ -1,3 +1,4 @@
+/** @module DetalleLavadoModal @description Modal con el detalle completo de una orden de lavado. */
 import { Button } from './Button'
 import { calculateOrderTimes } from '@/services/washingService'
 import type { WashingOrder } from '@/types'

@@ -1,3 +1,4 @@
+/** @module LineChart @description Componente wrapper de Recharts para gráfica de líneas. */
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface LineChartProps {

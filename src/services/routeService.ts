@@ -1,8 +1,22 @@
+/**
+ * @module routeService
+ * @description Servicio de gestión de rutas de entrega y recolección.
+ * Maneja el CRUD de rutas, paradas, asignación de conductores y
+ * tracking GPS en tiempo real. Los datos se almacenan en las tablas
+ * `delivery_routes`, `delivery_route_stops` y `route_tracking_points`.
+ */
+
 import { supabase } from '@/lib/supabase'
 import type { DeliveryRoute, DeliveryRouteStop, RouteTrackingPoint } from '@/types'
 
 // ========== RUTAS ==========
 
+/**
+ * Obtiene todas las rutas de entrega con filtros opcionales.
+ * Incluye las paradas ordenadas por `stop_order`.
+ * @param filters - Filtros opcionales (estado, conductor, rango de fechas)
+ * @returns Array de rutas con sus paradas
+ */
 export async function getRoutes(filters?: {
   status?: string
   driverId?: string
@@ -28,6 +42,11 @@ export async function getRoutes(filters?: {
   }))
 }
 
+/**
+ * Obtiene una ruta específica por su ID con todas sus paradas.
+ * @param routeId - UUID de la ruta
+ * @returns La ruta con paradas ordenadas, o null si no existe
+ */
 export async function getRouteById(routeId: string): Promise<DeliveryRoute | null> {
   const { data, error } = await supabase
     .from('delivery_routes')
@@ -44,6 +63,11 @@ export async function getRouteById(routeId: string): Promise<DeliveryRoute | nul
   }
 }
 
+/**
+ * Obtiene las rutas activas (PENDIENTE o EN_CURSO) asignadas a un conductor.
+ * @param driverId - UUID del conductor
+ * @returns Array de rutas asignadas al conductor
+ */
 export async function getMyRoutes(driverId: string): Promise<DeliveryRoute[]> {
   const { data, error } = await supabase
     .from('delivery_routes')
@@ -60,6 +84,15 @@ export async function getMyRoutes(driverId: string): Promise<DeliveryRoute[]> {
   }))
 }
 
+/**
+ * Crea una nueva ruta de entrega con sus paradas.
+ * La ruta se crea en estado PENDIENTE.
+ * @param params - Datos de la ruta y paradas
+ * @param params.name - Nombre de la ruta
+ * @param params.scheduledDate - Fecha programada (YYYY-MM-DD)
+ * @param params.stops - Array de paradas con orden, tipo, cliente, dirección, etc.
+ * @returns La ruta creada con todas sus paradas
+ */
 export async function createRoute(params: {
   name: string
   description?: string
@@ -114,6 +147,13 @@ export async function createRoute(params: {
   return getRouteById(route.id) as Promise<DeliveryRoute>
 }
 
+/**
+ * Actualiza el estado de una ruta. Gestiona automáticamente las fechas:
+ * - EN_CURSO: establece `started_at`
+ * - COMPLETADA/CANCELADA: establece `completed_at`
+ * @param routeId - UUID de la ruta
+ * @param status - Nuevo estado (PENDIENTE, EN_CURSO, COMPLETADA, CANCELADA)
+ */
 export async function updateRouteStatus(
   routeId: string,
   status: string,
@@ -131,6 +171,12 @@ export async function updateRouteStatus(
   if (error) throw error
 }
 
+/**
+ * Asigna un conductor a una ruta.
+ * @param routeId - UUID de la ruta
+ * @param driverId - UUID del conductor
+ * @param driverName - Nombre completo del conductor
+ */
 export async function assignDriver(
   routeId: string,
   driverId: string,
@@ -146,6 +192,14 @@ export async function assignDriver(
 
 // ========== PARADAS ==========
 
+/**
+ * Actualiza el estado de una parada de ruta. Gestiona automáticamente:
+ * - LLEGADO: establece `arrived_at`
+ * - COMPLETADA/OMITIDA: establece `completed_at`
+ * @param stopId - UUID de la parada
+ * @param status - Nuevo estado (PENDIENTE, EN_CAMINO, LLEGADO, COMPLETADA, OMITIDA)
+ * @param extras - Datos opcionales del conductor (notas, coordenadas GPS)
+ */
 export async function updateStopStatus(
   stopId: string,
   status: string,
@@ -169,6 +223,11 @@ export async function updateStopStatus(
 
 // ========== TRACKING ==========
 
+/**
+ * Registra un punto de tracking GPS del conductor durante una ruta.
+ * Se llama periódicamente mientras el conductor está en ruta activa.
+ * @param params - Datos del punto GPS (ruta, conductor, lat, lng, velocidad, rumbo)
+ */
 export async function addTrackingPoint(params: {
   routeId: string
   driverId: string
@@ -191,6 +250,12 @@ export async function addTrackingPoint(params: {
   if (error) throw error
 }
 
+/**
+ * Obtiene todos los puntos de tracking GPS de una ruta, ordenados cronológicamente.
+ * Se usa para dibujar el recorrido del conductor en el mapa.
+ * @param routeId - UUID de la ruta
+ * @returns Array de puntos GPS ordenados por timestamp
+ */
 export async function getTrackingPoints(routeId: string): Promise<RouteTrackingPoint[]> {
   const { data, error } = await supabase
     .from('route_tracking_points')
@@ -204,6 +269,11 @@ export async function getTrackingPoints(routeId: string): Promise<RouteTrackingP
 
 // ========== CONDUCTORES DISPONIBLES ==========
 
+/**
+ * Obtiene la lista de conductores activos del sistema.
+ * Filtra usuarios con rol 'conductor' y estado activo.
+ * @returns Array de conductores con id y nombre completo
+ */
 export async function getAvailableDrivers(): Promise<{ id: string; name: string }[]> {
   const { data, error } = await supabase
     .from('users')

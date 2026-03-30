@@ -1,3 +1,7 @@
+/**
+ * @module CargueInventarioPDVPage
+ * @description Cargue de inventario mensual obligatorio para usuarios PDV.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

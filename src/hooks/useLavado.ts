@@ -1,8 +1,28 @@
+/**
+ * @module useLavado
+ * @description Hook para operaciones del módulo de lavado de canastillas.
+ * Gestiona el flujo completo: envío, recepción, proceso, entrega y confirmación
+ * de órdenes de lavado, tanto para usuarios normales como para personal de lavado.
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { WashingOrder } from '@/types'
 
+/**
+ * Hook que gestiona las órdenes de lavado de canastillas.
+ * Diferencia entre el rol de usuario normal (envíos, confirmaciones)
+ * y personal de lavado (recepción, proceso, entrega).
+ * @returns Objeto con listas de órdenes por estado, contadores, rol del usuario y función de refresco.
+ * @returns {WashingOrder[]} misEnvios - Órdenes enviadas por el usuario (rol normal).
+ * @returns {WashingOrder[]} porConfirmar - Órdenes entregadas pendientes de confirmación (rol normal).
+ * @returns {WashingOrder[]} porRecibir - Órdenes por recibir (rol lavado).
+ * @returns {WashingOrder[]} enProceso - Órdenes en proceso de lavado (rol lavado).
+ * @returns {WashingOrder[]} porEntregar - Órdenes listas para entregar (rol lavado).
+ * @returns {WashingOrder[]} historial - Historial de órdenes completadas/canceladas.
+ * @returns {boolean} isWashingStaff - Indica si el usuario es personal de lavado.
+ * @returns {Function} refreshLavado - Recarga todos los datos.
+ */
 export function useLavado() {
   const { user } = useAuthStore()
   const [loading, setLoading] = useState(true)

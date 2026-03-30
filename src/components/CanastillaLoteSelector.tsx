@@ -1,3 +1,4 @@
+/** @module CanastillaLoteSelector @description Selector de canastillas por lote para operaciones masivas. */
 import { useState } from 'react'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
 import type { Canastilla } from '@/types'

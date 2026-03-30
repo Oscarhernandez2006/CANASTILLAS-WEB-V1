@@ -1,8 +1,18 @@
+/**
+ * @module useMyCanastillas
+ * @description Hook para obtener las canastillas asignadas al usuario actual.
+ * Carga todas las canastillas del usuario mediante paginación interna
+ * para superar el límite de 1000 filas de Supabase.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { Canastilla } from '@/types'
 
+/**
+ * Hook que obtiene todas las canastillas del usuario autenticado.
+ * @returns {{ canastillas: Canastilla[], loading: boolean, refreshCanastillas: Function }} Lista de canastillas, estado de carga y función de refresco.
+ */
 export function useMyCanastillas() {
   const [canastillas, setCanastillas] = useState<Canastilla[]>([])
   const [loading, setLoading] = useState(true)

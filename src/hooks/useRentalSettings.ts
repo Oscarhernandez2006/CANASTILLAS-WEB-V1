@@ -1,7 +1,21 @@
+/**
+ * @module useRentalSettings
+ * @description Hook para la configuración de tarifas de alquiler.
+ * Permite consultar y actualizar tarifas diarias (externa e interna)
+ * desde la tabla `rental_settings` de Supabase.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RentalSettings } from '@/types'
 
+/**
+ * Hook que gestiona la configuración de tarifas de alquiler.
+ * @returns Objeto con la configuración actual, estado de carga y funciones de actualización.
+ * @returns {RentalSettings | null} settings - Configuración actual de tarifas.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {Function} updateDailyRate - Actualiza la tarifa diaria externa.
+ * @returns {Function} updateInternalRate - Actualiza la tarifa diaria interna.
+ */
 export function useRentalSettings() {
   const [settings, setSettings] = useState<RentalSettings | null>(null)
   const [loading, setLoading] = useState(true)

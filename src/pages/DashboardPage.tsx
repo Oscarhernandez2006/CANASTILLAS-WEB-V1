@@ -1,3 +1,7 @@
+/**
+ * @module DashboardPage
+ * @description Dashboard principal con tarjetas de estadísticas y mapa de ubicaciones (solo super_admin).
+ */
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { useDashboardStats } from '@/hooks/useDashboardStats'
 import { LocationMap } from '@/components/LocationMap'

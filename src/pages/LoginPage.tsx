@@ -1,3 +1,7 @@
+/**
+ * @module LoginPage
+ * @description Página de inicio de sesión con validación, rate limiting y traducción de errores al español.
+ */
 import { useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/Button'

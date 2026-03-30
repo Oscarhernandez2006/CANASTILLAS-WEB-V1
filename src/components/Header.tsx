@@ -1,3 +1,4 @@
+/** @module Header @description Cabecera superior con logo, nombre de usuario, notificaciones y tema. */
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useNotificationStore } from '@/store/notificationStore'

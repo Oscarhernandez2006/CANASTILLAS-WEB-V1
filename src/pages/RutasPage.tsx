@@ -1,3 +1,7 @@
+/**
+ * @module RutasPage
+ * @description Gestión de rutas de entrega: crear, asignar conductor, seguimiento.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { useRoutes } from '@/hooks/useRoutes'

@@ -1,3 +1,9 @@
+/**
+ * @module useRentalReturns
+ * @description Hook para gestionar devoluciones parciales y totales de alquileres.
+ * Incluye creación de devoluciones con generación de número de factura,
+ * actualización automática de contadores y cálculo de montos.
+ */
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RentalReturn, RentalReturnItem } from '@/types'
@@ -13,6 +19,17 @@ interface CreateReturnParams {
   targetUserId: string
 }
 
+/**
+ * Hook que gestiona las devoluciones de canastillas en alquiler.
+ * @returns Objeto con funciones para crear devoluciones, calcular montos y obtener historial.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {string | null} error - Mensaje de error, si existe.
+ * @returns {Function} getReturnsByRentalId - Obtiene devoluciones de un alquiler.
+ * @returns {Function} createReturn - Crea una devolución parcial o total.
+ * @returns {Function} calculateReturnAmount - Calcula el monto de una devolución.
+ * @returns {Function} calculateDaysSinceStart - Calcula días desde el inicio del alquiler.
+ * @returns {Function} generateInvoiceNumber - Genera un número único de factura.
+ */
 export function useRentalReturns() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

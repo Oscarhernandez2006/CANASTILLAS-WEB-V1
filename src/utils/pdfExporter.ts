@@ -1,3 +1,7 @@
+/**
+ * @module pdfExporter
+ * @description Exportador de datos genérico a formato PDF.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 

@@ -1,3 +1,4 @@
+/** @module SalidaCanastillasModal @description Modal para dar salida (baja, extravío, fuera de servicio) a canastillas. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'

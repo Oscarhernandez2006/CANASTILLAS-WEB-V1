@@ -1,3 +1,7 @@
+/**
+ * @module pdfStyles
+ * @description Estilos compartidos para generación de PDFs.
+ */
 import type jsPDF from 'jspdf'
 import type { SignatureData } from '@/types'
 

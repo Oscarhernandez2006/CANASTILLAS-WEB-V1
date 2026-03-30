@@ -1,3 +1,4 @@
+/** @module DetalleAlquilerModal @description Modal con el detalle completo de un alquiler y sus items. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'

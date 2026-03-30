@@ -1,3 +1,4 @@
+/** @module EntregarLavadoModal @description Modal para entregar canastillas lavadas al remitente. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { deliverOrder } from '@/services/washingService'

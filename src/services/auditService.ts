@@ -1,7 +1,25 @@
+/**
+ * @module auditService
+ * @description Servicio de auditoría del sistema. Registra y consulta todos los eventos
+ * de actividad de los usuarios (login, CRUD, exportaciones, traspasos, etc.).
+ * Los logs se almacenan en la tabla `audit_logs` de Supabase.
+ */
+
 import { supabase } from '@/lib/supabase'
 import type { AuditLog } from '@/types'
 
-// Registrar un evento de auditoría
+/**
+ * Registra un evento de auditoría en la base de datos.
+ * Se llama desde los distintos módulos del sistema para dejar trazabilidad.
+ * @param params - Datos del evento a registrar
+ * @param params.userId - ID del usuario que realizó la acción
+ * @param params.userName - Nombre completo del usuario
+ * @param params.userRole - Rol del usuario al momento de la acción
+ * @param params.action - Tipo de acción (CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, etc.)
+ * @param params.module - Módulo del sistema donde ocurrió (canastillas, traspasos, alquileres, etc.)
+ * @param params.description - Descripción legible del evento
+ * @param params.details - Datos adicionales en formato JSON
+ */
 export async function logAuditEvent(params: {
   userId: string
   userName: string
@@ -26,7 +44,19 @@ export async function logAuditEvent(params: {
   }
 }
 
-// Obtener logs de auditoría con filtros
+/**
+ * Obtiene los registros de auditoría con filtros opcionales y paginación.
+ * @param filters - Filtros opcionales para la búsqueda
+ * @param filters.module - Filtrar por módulo del sistema
+ * @param filters.action - Filtrar por tipo de acción
+ * @param filters.userId - Filtrar por usuario específico
+ * @param filters.dateFrom - Fecha inicio (formato YYYY-MM-DD)
+ * @param filters.dateTo - Fecha fin (formato YYYY-MM-DD)
+ * @param filters.search - Búsqueda de texto en descripción o nombre de usuario
+ * @param filters.limit - Cantidad máxima de resultados (default: 50)
+ * @param filters.offset - Desplazamiento para paginación (default: 0)
+ * @returns Objeto con los datos y el conteo total para paginación
+ */
 export async function getAuditLogs(filters?: {
   module?: string
   action?: string
@@ -71,7 +101,10 @@ export async function getAuditLogs(filters?: {
   return { data: data || [], count: count || 0 }
 }
 
-// Obtener módulos únicos para filtros
+/**
+ * Retorna la lista de módulos del sistema disponibles para filtrar en auditoría.
+ * @returns Array de objetos con value (clave interna) y label (nombre visible)
+ */
 export function getAuditModules(): { value: string; label: string }[] {
   return [
     { value: 'auth', label: 'Autenticación' },
@@ -89,7 +122,10 @@ export function getAuditModules(): { value: string; label: string }[] {
   ]
 }
 
-// Obtener acciones únicas para filtros
+/**
+ * Retorna la lista de tipos de acción disponibles para filtrar en auditoría.
+ * @returns Array de objetos con value (clave interna) y label (nombre visible)
+ */
 export function getAuditActions(): { value: string; label: string }[] {
   return [
     { value: 'CREATE', label: 'Crear' },

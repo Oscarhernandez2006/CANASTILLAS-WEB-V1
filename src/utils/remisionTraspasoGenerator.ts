@@ -1,3 +1,7 @@
+/**
+ * @module remisionTraspasoGenerator
+ * @description Genera PDFs de remisión de traspaso.
+ */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Transfer, SignatureData } from '@/types'

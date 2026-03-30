@@ -1,3 +1,7 @@
+/**
+ * @module security
+ * @description Utilidades de seguridad: validación de contraseñas y rate limiting en cliente.
+ */
 // ============================================================
 // Utilidades de seguridad — validación de contraseñas + rate limiting
 // ============================================================

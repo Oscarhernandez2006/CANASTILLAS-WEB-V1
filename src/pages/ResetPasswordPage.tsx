@@ -1,3 +1,7 @@
+/**
+ * @module ResetPasswordPage
+ * @description Página para restablecer la contraseña con token de recuperación.
+ */
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/Button'

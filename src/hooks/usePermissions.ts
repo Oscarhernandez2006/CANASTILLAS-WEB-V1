@@ -1,8 +1,27 @@
+/**
+ * @module usePermissions
+ * @description Hook para verificación de permisos de acceso del usuario actual.
+ * Proporciona funciones para comprobar permisos específicos y acceso a cada módulo.
+ * Los super_admin tienen acceso total sin necesidad de consultar permisos.
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { getMyPermissions } from '@/services/permissionService'
 import type { UserPermission, PermissionKey } from '@/types'
 
+/**
+ * Hook que gestiona y verifica los permisos del usuario autenticado.
+ * @returns Objeto con permisos, estado de carga y funciones de verificación por módulo.
+ * @returns {UserPermission[]} permissions - Lista de permisos del usuario.
+ * @returns {boolean} loading - Estado de carga.
+ * @returns {boolean} isSuperAdmin - Si el usuario es super administrador.
+ * @returns {Function} hasPermission - Verifica un permiso específico por clave.
+ * @returns {Function} canAccessDashboard - Acceso al dashboard.
+ * @returns {Function} canAccessInventario - Acceso al inventario.
+ * @returns {Function} canAccessTraspasos - Acceso a traspasos.
+ * @returns {Function} canAccessAlquileres - Acceso a alquileres.
+ * @returns {Function} hasCanastillaPermission - Permisos CRUD de canastillas.
+ */
 export function usePermissions() {
   const { user } = useAuthStore()
   const [permissions, setPermissions] = useState<UserPermission[]>([])

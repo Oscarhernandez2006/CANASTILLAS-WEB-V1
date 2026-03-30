@@ -1,3 +1,7 @@
+/**
+ * @module TraspasosPage
+ * @description Módulo de traspasos: solicitar, aceptar/rechazar, historial, firma digital.
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

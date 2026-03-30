@@ -1,3 +1,7 @@
+/**
+ * @module notificationStore
+ * @description Store Zustand de notificaciones en tiempo real. Usa Supabase Realtime para recibir notificaciones push.
+ */
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'

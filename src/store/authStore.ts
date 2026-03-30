@@ -1,3 +1,7 @@
+/**
+ * @module authStore
+ * @description Store Zustand de autenticación. Maneja login, logout, sesión del usuario y traduce errores de Supabase Auth al español.
+ */
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@/types/index'

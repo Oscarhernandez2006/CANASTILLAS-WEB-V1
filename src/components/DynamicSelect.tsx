@@ -1,3 +1,4 @@
+/** @module DynamicSelect @description Componente select con datos dinámicos cargados desde Supabase. */
 import { useState, useRef, useEffect } from 'react'
 
 interface DynamicSelectProps {

@@ -1,3 +1,7 @@
+/**
+ * @module MiRutaPage
+ * @description Vista del conductor: ruta asignada, tracking GPS, actualización de paradas.
+ */
 import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'

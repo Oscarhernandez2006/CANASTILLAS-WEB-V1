@@ -1,3 +1,4 @@
+/** @module PieChart @description Componente wrapper de Recharts para gráfica de pastel. */
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 
 interface PieChartProps {

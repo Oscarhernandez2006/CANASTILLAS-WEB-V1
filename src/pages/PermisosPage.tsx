@@ -1,3 +1,7 @@
+/**
+ * @module PermisosPage
+ * @description Gestión de permisos granulares por usuario (solo super_admin).
+ */
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'

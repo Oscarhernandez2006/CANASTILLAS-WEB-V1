@@ -1,3 +1,4 @@
+/** @module CanastillasPorCliente @description Vista de canastillas agrupadas por cliente/punto de venta. */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'

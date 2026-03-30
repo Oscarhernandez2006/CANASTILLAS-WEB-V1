@@ -1,3 +1,4 @@
+/** @module FirmaDigitalModal @description Modal de captura de firma digital táctil (entrega, recibe, tercero opcional). */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from './Button'
 import SignaturePad from 'signature_pad'

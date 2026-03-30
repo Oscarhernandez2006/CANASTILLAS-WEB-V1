@@ -1,3 +1,4 @@
+/** @module AgregarCanastillasAlquilerModal @description Modal para agregar canastillas adicionales a un alquiler existente. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'

@@ -1,3 +1,4 @@
+/** @module RecibirLavadoModal @description Modal para que el personal de lavado reciba una orden. */
 import { useState } from 'react'
 import { Button } from './Button'
 import { receiveOrder } from '@/services/washingService'
