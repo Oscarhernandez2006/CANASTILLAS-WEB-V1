@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useNotificationStore } from '@/store/notificationStore'
 import { NotificationPanel } from './NotificationPanel'
 import { useTheme } from '@/context/ThemeContext'
+import logoSistema from '@/assets/logo-sistema.ico'
 
 interface HeaderProps {
   title: string
@@ -47,10 +48,10 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-[1000] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 px-3 sm:px-6 lg:px-8 py-3 sm:py-4 overflow-hidden">
+    <header className="sticky top-0 z-[1000] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 overflow-hidden">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
-          {/* Botón hamburguesa para móvil */}
+        {/* Izquierda: hamburguesa + título */}
+        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1 basis-0">
           <button
             type="button"
             onClick={onMenuClick}
@@ -58,7 +59,7 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
               e.preventDefault()
               onMenuClick()
             }}
-            className="p-2 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl lg:hidden touch-manipulation transition-colors"
+            className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl lg:hidden touch-manipulation transition-colors"
             aria-label="Abrir menú"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,12 +68,12 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
           </button>
 
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white truncate tracking-tight">{title}</h1>
-            {subtitle && <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">{subtitle}</p>}
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate tracking-tight">{title}</h1>
+            {subtitle && <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
         </div>
 
-        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0 flex-1 basis-0 justify-end">
           {/* Notificaciones */}
           <div className="relative">
             <button
@@ -94,26 +95,6 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
               onClose={() => setShowNotifications(false)}
             />
           </div>
-
-          {/* Toggle tema oscuro/claro */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
-            aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-            title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
-          >
-            {theme === 'dark' ? (
-              /* Ícono sol */
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            ) : (
-              /* Ícono luna */
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </button>
 
           {/* Cerrar sesión */}
           <button

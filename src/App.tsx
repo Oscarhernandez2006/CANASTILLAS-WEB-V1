@@ -21,6 +21,9 @@ import { FacturacionPage } from './pages/FacturacionPage'
 import { ConsultarFacturacionPage } from './pages/ConsultarFacturacionPage'
 import { CargueInventarioPDVPage } from './pages/CargueInventarioPDVPage'
 import { ControlInventarioPDVPage } from './pages/ControlInventarioPDVPage'
+import { AuditoriaPage } from './pages/AuditoriaPage'
+import { RutasPage } from './pages/RutasPage'
+import { MiRutaPage } from './pages/MiRutaPage'
 import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
@@ -247,6 +250,33 @@ function AppRoutes() {
           element={
             <ProtectedRoute requirePermission={permissions.canAccessControlPdv}>
               <ControlInventarioPDVPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/auditoria"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessAuditoria}>
+              <AuditoriaPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/rutas"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessRutas}>
+              <RutasPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/mi-ruta"
+          element={
+            <ProtectedRoute>
+              <MiRutaPage />
             </ProtectedRoute>
           }
         />

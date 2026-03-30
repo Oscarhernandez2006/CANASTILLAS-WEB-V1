@@ -219,10 +219,9 @@ export function useDashboardStats() {
         }
       })
 
-      // Convertir a array y ordenar por total (mayor a menor), tomando solo las 5 primeras
+      // Convertir a array y ordenar por total (mayor a menor)
       const locations = Object.values(locationMap)
         .sort((a, b) => b.total - a.total)
-        .slice(0, 5)
 
       // Calcular ingresos (simulado por ahora - $5,000 por canastilla/día)
       const tarifaDiaria = 5000

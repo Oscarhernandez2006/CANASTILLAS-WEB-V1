@@ -82,6 +82,15 @@ export function onlyNumbers(value: string): string {
   return value.replace(/[^0-9]/g, '')
 }
 
+// Sanitizar texto libre: elimina etiquetas HTML/scripts potenciales
+export function sanitizeText(value: string): string {
+  return value
+    .replace(/[<>]/g, '')      // Eliminar < y > para prevenir inyección HTML
+    .replace(/javascript:/gi, '') // Eliminar protocolos javascript:
+    .replace(/on\w+\s*=/gi, '')  // Eliminar event handlers (onclick=, onerror=, etc.)
+    .trim()
+}
+
 // Color de badge según estado
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {

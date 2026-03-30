@@ -109,6 +109,14 @@ export function usePermissions() {
     return hasPermission('control_pdv.ver')
   }, [hasPermission])
 
+  const canAccessAuditoria = useCallback((): boolean => {
+    return hasPermission('auditoria.ver')
+  }, [hasPermission])
+
+  const canAccessRutas = useCallback((): boolean => {
+    return hasPermission('rutas.ver')
+  }, [hasPermission])
+
   // ========== COMPATIBILIDAD CON CÓDIGO EXISTENTE ==========
 
   // Para el Sidebar - acceso a canastillas o inventario
@@ -156,6 +164,8 @@ export function usePermissions() {
     canAccessConsultarFacturacion,
     canAccessCarguePdv,
     canAccessControlPdv,
+    canAccessAuditoria,
+    canAccessRutas,
 
     // Compatibilidad
     canAccessCanastillasMenu,

@@ -1,12 +1,12 @@
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { useDashboardStats } from '@/hooks/useDashboardStats'
-import { PieChart } from '@/components/charts/PieChart'
-import { BarChart } from '@/components/charts/BarChart'
-import { LineChart } from '@/components/charts/LineChart'
 import { LocationMap } from '@/components/LocationMap'
+import { useAuthStore } from '@/store/authStore'
 
 export function DashboardPage() {
   const stats = useDashboardStats()
+  const { user } = useAuthStore()
+  const isSuperAdmin = user?.role === 'super_admin'
 
   // Calcular porcentajes
   const disponiblesPercent = stats.totalCanastillas > 0
@@ -24,39 +24,6 @@ export function DashboardPage() {
   const lavadoPercent = stats.totalCanastillas > 0
     ? Math.round((stats.enLavado / stats.totalCanastillas) * 100)
     : 0
-
-  // Datos para gráfica de pie (distribución)
-  const pieData = [
-    { name: 'Disponibles', value: stats.disponibles, color: '#22c55e' },
-    { name: 'Alquiler Interno', value: stats.enAlquilerInterno, color: '#a855f7' },
-    { name: 'Alquiler Externo', value: stats.enAlquilerExterno, color: '#ec4899' },
-    { name: 'En Lavado', value: stats.enLavado, color: '#06b6d4' },
-    { name: 'En Uso Interno', value: stats.enUsoInterno, color: '#3b82f6' },
-    { name: 'En Reparación', value: stats.enReparacion, color: '#f97316' },
-    { name: 'En Retorno', value: stats.enRetorno, color: '#f59e0b' },
-  ].filter(item => item.value > 0)
-
-  // Datos para gráfica de barras
-  const barData = [
-    { name: 'Disponibles', value: stats.disponibles },
-    { name: 'Alq. Interno', value: stats.enAlquilerInterno },
-    { name: 'Alq. Externo', value: stats.enAlquilerExterno },
-    { name: 'Lavado', value: stats.enLavado },
-    { name: 'Uso Interno', value: stats.enUsoInterno },
-    { name: 'Reparación', value: stats.enReparacion },
-    { name: 'En Retorno', value: stats.enRetorno },
-  ]
-
-  // Datos simulados para tendencia (últimos 7 días)
-  const trendData = [
-    { name: 'Lun', value: stats.disponibles - 15 },
-    { name: 'Mar', value: stats.disponibles - 10 },
-    { name: 'Mié', value: stats.disponibles - 5 },
-    { name: 'Jue', value: stats.disponibles - 8 },
-    { name: 'Vie', value: stats.disponibles - 3 },
-    { name: 'Sáb', value: stats.disponibles - 1 },
-    { name: 'Hoy', value: stats.disponibles },
-  ]
 
   if (stats.loading) {
     return (
@@ -165,32 +132,13 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Gráficas principales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Gráfica de Pie - Distribución */}
+        {/* Canastillas por Ubicación - Solo super_admin */}
+        {isSuperAdmin && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Distribución de Canastillas</h2>
-            <PieChart data={pieData} />
-          </div>
-
-          {/* Mapa de ubicaciones */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Top 5 Ubicaciones con Más Canastillas</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Canastillas por Ubicación</h2>
             <LocationMap locations={stats.locations} />
           </div>
-        </div>
-
-        {/* Gráfica de Barras */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Canastillas por Estado</h2>
-          <BarChart data={barData} color="#22c55e" />
-        </div>
-
-        {/* Gráfica de línea - Tendencia */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Tendencia de Disponibilidad (Última Semana)</h2>
-          <LineChart data={trendData} color="#14b8a6" />
-        </div>
+        )}
       </div>
     </DashboardLayout>
   )

@@ -3,6 +3,7 @@ import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'
 import { createUser } from '@/services/userService'
 import { onlyLetters, onlyNumbers } from '@/utils/helpers'
+import { validatePassword } from '@/utils/security'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
 
 interface CrearUsuarioModalProps {
@@ -56,8 +57,14 @@ export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioMo
     return
   }
 
-  if (formData.password.length < 6) {
-    setError('La contraseña debe tener al menos 6 caracteres')
+  if (formData.password.length < 8) {
+    setError('La contraseña debe tener al menos 8 caracteres')
+    return
+  }
+
+  const pwValidation = validatePassword(formData.password)
+  if (!pwValidation.isValid) {
+    setError('Contraseña insegura: ' + pwValidation.errors.join(', '))
     return
   }
 

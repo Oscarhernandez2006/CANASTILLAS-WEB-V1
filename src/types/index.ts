@@ -453,6 +453,14 @@ export type PermissionKey =
   // Control Inventario PDV
   | 'control_pdv.ver'
   | 'control_pdv.habilitar_extension'
+  // Auditoría
+  | 'auditoria.ver'
+  | 'auditoria.exportar'
+  // Rutas
+  | 'rutas.ver'
+  | 'rutas.crear'
+  | 'rutas.asignar'
+  | 'rutas.ver_seguimiento'
 
 // Módulos del sistema (para agrupar permisos en la UI)
 export type PermissionModule =
@@ -469,6 +477,8 @@ export type PermissionModule =
   | 'consultar_facturacion'
   | 'cargue_pdv'
   | 'control_pdv'
+  | 'auditoria'
+  | 'rutas'
 
 // Estructura de un permiso en la base de datos
 export interface UserPermission {
@@ -484,4 +494,75 @@ export interface UserPermission {
 export interface PermissionUpdate {
   permission_key: PermissionKey
   is_granted: boolean
+}
+
+// ========== AUDITORÍA ==========
+
+export interface AuditLog {
+  id: string
+  user_id: string
+  user_name: string
+  user_role: string | null
+  action: string
+  module: string
+  description: string
+  details: Record<string, unknown>
+  ip_address: string | null
+  created_at: string
+}
+
+// ========== RUTAS DE ENTREGA ==========
+
+export type RouteStatus = 'PENDIENTE' | 'EN_CURSO' | 'COMPLETADA' | 'CANCELADA'
+export type StopType = 'ENTREGA' | 'RECOLECCION'
+export type StopStatus = 'PENDIENTE' | 'EN_CAMINO' | 'LLEGADO' | 'COMPLETADA' | 'OMITIDA'
+
+export interface DeliveryRoute {
+  id: string
+  name: string
+  description: string | null
+  driver_id: string | null
+  driver_name: string | null
+  status: RouteStatus
+  scheduled_date: string
+  started_at: string | null
+  completed_at: string | null
+  created_by: string
+  created_by_name: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  stops?: DeliveryRouteStop[]
+}
+
+export interface DeliveryRouteStop {
+  id: string
+  route_id: string
+  stop_order: number
+  type: StopType
+  client_name: string
+  address: string
+  latitude: number | null
+  longitude: number | null
+  phone: string | null
+  notes: string | null
+  canastillas_qty: number
+  status: StopStatus
+  arrived_at: string | null
+  completed_at: string | null
+  driver_notes: string | null
+  driver_latitude: number | null
+  driver_longitude: number | null
+  created_at: string
+}
+
+export interface RouteTrackingPoint {
+  id: string
+  route_id: string
+  driver_id: string
+  latitude: number
+  longitude: number
+  speed: number | null
+  heading: number | null
+  recorded_at: string
 }

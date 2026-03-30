@@ -121,6 +121,22 @@ export const PERMISSIONS_CONFIG: Record<PermissionModule, {
       { key: 'control_pdv.habilitar_extension', label: 'Habilitar 2da Oportunidad', description: 'Otorgar segunda oportunidad de cargue a un PDV' },
     ],
   },
+  auditoria: {
+    label: 'Auditoría',
+    permissions: [
+      { key: 'auditoria.ver', label: 'Ver Auditoría', description: 'Acceder al módulo de auditoría y ver registros de actividad' },
+      { key: 'auditoria.exportar', label: 'Exportar Auditoría', description: 'Exportar registros de auditoría a Excel' },
+    ],
+  },
+  rutas: {
+    label: 'Rutas de Entrega',
+    permissions: [
+      { key: 'rutas.ver', label: 'Ver Rutas', description: 'Acceder al módulo de rutas de entrega y recolección' },
+      { key: 'rutas.crear', label: 'Crear Ruta', description: 'Crear y editar rutas de entrega' },
+      { key: 'rutas.asignar', label: 'Asignar Conductor', description: 'Asignar conductores a las rutas' },
+      { key: 'rutas.ver_seguimiento', label: 'Ver Seguimiento', description: 'Ver el seguimiento en tiempo real de las rutas' },
+    ],
+  },
 }
 
 // Lista de todos los módulos en orden
@@ -138,6 +154,8 @@ export const ALL_MODULES: PermissionModule[] = [
   'consultar_facturacion',
   'cargue_pdv',
   'control_pdv',
+  'auditoria',
+  'rutas',
 ]
 
 // Lista de todas las claves de permisos

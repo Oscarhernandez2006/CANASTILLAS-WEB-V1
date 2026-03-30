@@ -7,6 +7,7 @@ import { useUsers } from '@/hooks/useUsers'
 import { useAuthStore } from '@/store/authStore'
 import { updateUser, activateUser, deactivateUser, adminChangeUserPassword, deleteUserCompletely } from '@/services/userService'
 import { formatDate } from '@/utils/helpers'
+import { validatePassword } from '@/utils/security'
 
 const ROLE_LABELS: { [key: string]: string } = {
   super_admin: 'Super Admin',
@@ -89,7 +90,8 @@ export function UsuariosPage() {
 
   const handleChangePassword = async () => {
     if (!passwordUser) return
-    if (newPassword.length < 6) { alert('La contraseña debe tener al menos 6 caracteres'); return }
+    const pwValidation = validatePassword(newPassword)
+    if (!pwValidation.isValid) { alert('Contraseña insegura: ' + pwValidation.errors.join(', ')); return }
     if (newPassword !== confirmPassword) { alert('Las contraseñas no coinciden'); return }
     setPasswordLoading(true)
     try {
@@ -501,7 +503,7 @@ export function UsuariosPage() {
               <Button
                 onClick={handleChangePassword}
                 loading={passwordLoading}
-                disabled={passwordLoading || newPassword.length < 6 || newPassword !== confirmPassword}
+                disabled={passwordLoading || newPassword.length < 8 || newPassword !== confirmPassword || !validatePassword(newPassword).isValid}
                 className="flex-1"
               >
                 Cambiar Contraseña

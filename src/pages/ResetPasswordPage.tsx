@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
+import { validatePassword } from '@/utils/security'
 
 export function ResetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -19,8 +20,14 @@ export function ResetPasswordPage() {
       return
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres')
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres')
+      return
+    }
+
+    const pwValidation = validatePassword(password)
+    if (!pwValidation.isValid) {
+      setError('Contraseña insegura: ' + pwValidation.errors.join(', '))
       return
     }
 
