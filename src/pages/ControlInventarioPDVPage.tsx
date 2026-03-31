@@ -244,13 +244,20 @@ export function ControlInventarioPDVPage() {
                       {/* Estado */}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {upload ? (
-                          <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-                            upload.is_late
-                              ? 'bg-orange-100 text-orange-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {upload.is_late ? 'Tardío' : 'Completado'}
-                          </span>
+                          <>
+                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                              upload.is_late
+                                ? 'bg-orange-100 text-orange-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {upload.is_late ? 'Tardío' : 'Completado'}
+                            </span>
+                            {upload.no_canastillas && (
+                              <span className="px-3 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                                Sin canastillas
+                              </span>
+                            )}
+                          </>
                         ) : (
                           <>
                             <span className="px-3 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
@@ -299,7 +306,22 @@ export function ControlInventarioPDVPage() {
                               </svg>
                               Inventario Reportado
                             </h4>
-                            {upload && upload.items && upload.items.length > 0 ? (
+                            {upload && upload.no_canastillas ? (
+                              <>
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+                                  <p className="text-amber-800 font-medium">📦 Sin canastillas</p>
+                                  <p className="text-amber-600 text-sm mt-1">El punto de venta reportó que no tiene canastillas.</p>
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1">
+                                  <p><strong>Fecha:</strong> {new Date(upload.uploaded_at).toLocaleDateString('es-CO', {
+                                    day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                                  })}</p>
+                                  <p><strong>Realizado por:</strong> {upload.user_name}</p>
+                                  {upload.user_cedula && <p><strong>Cédula:</strong> {upload.user_cedula}</p>}
+                                  {upload.is_late && <p className="text-orange-600 font-medium">⚠️ Cargue tardío (segunda oportunidad)</p>}
+                                </div>
+                              </>
+                            ) : upload && upload.items && upload.items.length > 0 ? (
                               <>
                                 <div className="space-y-2">
                                   {upload.items.map((item: any, idx: number) => (

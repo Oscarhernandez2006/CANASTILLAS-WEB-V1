@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import { logAuditEvent } from '@/services/auditService'
 import type { User } from '@/types/index'
 
 // Traducir errores de Supabase a español
@@ -55,7 +56,7 @@ interface AuthState {
   initialize: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
   loading: true,
@@ -103,6 +104,17 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
 
         set({ user: userData, session: data.session })
+
+        // Registrar login en auditoría
+        await logAuditEvent({
+          userId: userData.id,
+          userName: `${userData.first_name || ''} ${userData.last_name || ''}`.trim(),
+          userRole: userData.role,
+          action: 'LOGIN',
+          module: 'auth',
+          description: `Inicio de sesión: ${userData.email}`,
+          details: { email: userData.email },
+        })
       }
     } catch (error: any) {
       console.error('Error signing in:', error)
@@ -116,6 +128,19 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOut: async () => {
     try {
+      // Registrar logout en auditoría antes de cerrar sesión
+      const currentUser = get().user
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'LOGOUT',
+          module: 'auth',
+          description: `Cierre de sesión: ${currentUser.email}`,
+          details: { email: currentUser.email },
+        })
+      }
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       // Limpiar flags de sesión

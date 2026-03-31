@@ -9,6 +9,7 @@ import { useRentalReturns } from '@/hooks/useRentalReturns'
 import { useAuthStore } from '@/store/authStore'
 import { openFacturaDevolucionPDF, getFacturaDevolucionPDFBlob } from '@/utils/facturaDevolucionGenerator'
 import { uploadSignedPDF } from '@/services/storageService'
+import { logAuditEvent } from '@/services/auditService'
 import { supabase } from '@/lib/supabase'
 
 interface ProcesarRetornoModalProps {
@@ -296,6 +297,17 @@ export function ProcesarRetornoModal({ isOpen, onClose, onSuccess, rental }: Pro
         : `Retorno completo procesado\n\nFactura: ${result.invoiceNumber}\nTotal: ${formatCurrency(totalAmount)}`
 
       alert(message)
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'CREATE',
+        module: 'alquileres',
+        description: `Retorno ${isPartialReturn ? 'parcial' : 'completo'} - ${totalCanastillasDevolver} canastilla(s). Factura: ${result.invoiceNumber}`,
+        details: { rental_id: rental.id, factura: result.invoiceNumber, cantidad_devuelta: totalCanastillasDevolver, tipo: isPartialReturn ? 'parcial' : 'completo' },
+      })
+
       onSuccess()
       onClose()
     } catch (err: any) {

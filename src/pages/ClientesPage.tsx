@@ -9,6 +9,7 @@ import { CrearClienteModal } from '@/components/CrearClienteModal'
 import { useSalePoints } from '@/hooks/useSalePoints'
 import { useAuthStore } from '@/store/authStore'
 import { activateSalePoint, deactivateSalePoint } from '@/services/salePointService'
+import { logAuditEvent } from '@/services/auditService'
 import { formatDate } from '@/utils/helpers'
 import type { SalePoint } from '@/types'
 
@@ -35,6 +36,7 @@ export function ClientesPage() {
   }
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    const targetCliente = salePoints.find(c => c.id === id)
     try {
       if (currentStatus) {
         await deactivateSalePoint(id)
@@ -42,6 +44,17 @@ export function ClientesPage() {
       } else {
         await activateSalePoint(id)
         alert('✅ Cliente activado exitosamente')
+      }
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'clientes',
+          description: `${currentStatus ? 'Desactivación' : 'Activación'} de cliente: ${targetCliente?.name || ''}`,
+          details: { cliente_id: id, accion: currentStatus ? 'desactivar' : 'activar', nombre: targetCliente?.name },
+        })
       }
       refreshSalePoints()
     } catch (error: any) {

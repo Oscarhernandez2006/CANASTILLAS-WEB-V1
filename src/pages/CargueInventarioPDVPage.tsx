@@ -34,6 +34,7 @@ export function CargueInventarioPDVPage() {
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
+  const [noTieneCanastillas, setNoTieneCanastillas] = useState(false)
 
   const reminder = getReminderMessage()
 
@@ -53,21 +54,24 @@ export function CargueInventarioPDVPage() {
   }
 
   const handleSubmit = async () => {
-    const items = getItems()
-    if (items.length === 0) {
-      alert('Debe ingresar al menos una cantidad mayor a 0')
-      return
+    if (!noTieneCanastillas) {
+      const items = getItems()
+      if (items.length === 0) {
+        alert('Debe ingresar al menos una cantidad mayor a 0')
+        return
+      }
     }
     setShowConfirmation(true)
   }
 
   const handleConfirm = async () => {
     try {
-      const items = getItems()
-      const result = await submitUpload(items)
+      const items = noTieneCanastillas ? [] : getItems()
+      const result = await submitUpload(items, noTieneCanastillas)
       setUploadResult(result)
       setShowConfirmation(false)
       setQuantities({})
+      setNoTieneCanastillas(false)
     } catch (error: any) {
       alert('❌ Error: ' + error.message)
     }
@@ -132,6 +136,11 @@ export function CargueInventarioPDVPage() {
             <p className="text-green-700 mb-1">
               Su inventario para <strong>{MONTH_NAMES[month]} {year}</strong> ha sido registrado correctamente.
             </p>
+            {uploadResult.no_canastillas && (
+              <p className="text-amber-600 text-sm mt-2">
+                📦 Reportado como punto de venta sin canastillas.
+              </p>
+            )}
             {uploadResult.is_late && (
               <p className="text-orange-600 text-sm mt-2">
                 ⚠️ Este cargue fue registrado como tardío (segunda oportunidad).
@@ -155,7 +164,34 @@ export function CargueInventarioPDVPage() {
             </div>
 
             <div className="p-6">
-              {canastillaTypes.length === 0 ? (
+              {/* Opción: No tiene canastillas */}
+              <div className="mb-6">
+                <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={noTieneCanastillas}
+                    onChange={(e) => {
+                      setNoTieneCanastillas(e.target.checked)
+                      if (e.target.checked) setQuantities({})
+                    }}
+                    className="w-5 h-5 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">No tengo canastillas en este punto de venta</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Marque esta opción si actualmente no tiene canastillas asignadas.</p>
+                  </div>
+                </label>
+              </div>
+
+              {noTieneCanastillas ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+                  <svg className="w-12 h-12 text-amber-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <p className="text-amber-800 font-medium">Se registrará que este punto de venta no tiene canastillas para este período.</p>
+                  <p className="text-amber-600 text-sm mt-1">Total: 0 canastillas</p>
+                </div>
+              ) : canastillaTypes.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No hay tipos de canastillas registrados en el sistema.</p>
               ) : (
                 <div className="space-y-3">
@@ -204,10 +240,10 @@ export function CargueInventarioPDVPage() {
               <div className="mt-6 flex justify-end">
                 <Button
                   onClick={handleSubmit}
-                  disabled={totalCanastillas === 0 || submitting}
+                  disabled={(!noTieneCanastillas && totalCanastillas === 0) || submitting}
                   loading={submitting}
                 >
-                  {submitting ? 'Cargando...' : 'Enviar Cargue de Inventario'}
+                  {submitting ? 'Cargando...' : noTieneCanastillas ? 'Reportar Sin Canastillas' : 'Enviar Cargue de Inventario'}
                 </Button>
               </div>
             </div>
@@ -236,10 +272,19 @@ export function CargueInventarioPDVPage() {
                   Tardío
                 </span>
               )}
+              {currentUpload.no_canastillas && (
+                <span className="ml-auto px-3 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                  Sin canastillas
+                </span>
+              )}
             </div>
 
             {/* Resumen de lo cargado */}
-            {currentUpload.items && currentUpload.items.length > 0 && (
+            {currentUpload.no_canastillas ? (
+              <div className="bg-amber-50 rounded-lg p-4">
+                <p className="text-sm text-amber-800 font-medium">📦 Punto de venta reportado sin canastillas para este período.</p>
+              </div>
+            ) : currentUpload.items && currentUpload.items.length > 0 && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Resumen del cargue</h4>
                 <div className="space-y-2">
@@ -311,9 +356,15 @@ export function CargueInventarioPDVPage() {
                         Tardío
                       </span>
                     )}
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                      {upload.items?.reduce((a: number, b: any) => a + b.cantidad, 0) || 0} canastillas
-                    </span>
+                    {(upload as any).no_canastillas ? (
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                        Sin canastillas
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                        {upload.items?.reduce((a: number, b: any) => a + b.cantidad, 0) || 0} canastillas
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -332,18 +383,25 @@ export function CargueInventarioPDVPage() {
 
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <p className="text-sm font-medium text-gray-700 mb-3">Resumen del cargue:</p>
-                <div className="space-y-2">
-                  {getItems().map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{item.canastilla_size} - {item.canastilla_color}</span>
-                      <span className="font-semibold">{item.cantidad}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between pt-2 border-t border-gray-200 font-bold">
-                    <span>Total</span>
-                    <span className="text-primary-600">{totalCanastillas}</span>
+                {noTieneCanastillas ? (
+                  <div className="text-center py-2">
+                    <p className="text-amber-700 font-medium">📦 Sin canastillas en este punto de venta</p>
+                    <p className="text-sm text-gray-500 mt-1">Total: 0 canastillas</p>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    {getItems().map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span className="text-gray-600">{item.canastilla_size} - {item.canastilla_color}</span>
+                        <span className="font-semibold">{item.cantidad}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between pt-2 border-t border-gray-200 font-bold">
+                      <span>Total</span>
+                      <span className="text-primary-600">{totalCanastillas}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <p className="text-sm text-gray-600 mb-6">

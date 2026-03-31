@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/utils/helpers'
 import { openRemisionTraspasoPDF, getRemisionTraspasoPDFBlob } from '@/utils/remisionTraspasoGenerator'
 import { uploadSignedPDF } from '@/services/storageService'
+import { logAuditEvent } from '@/services/auditService'
 import type { Transfer, SignatureData } from '@/types'
 
 type TabType = 'solicitudes-recibidas' | 'solicitudes-enviadas' | 'devoluciones-externas' | 'historial'
@@ -252,6 +253,16 @@ export function TraspasosPage() {
         : 'Traspaso aceptado exitosamente. Remisión: ' + (transfer.remision_number || '')
       alert(successMessage)
 
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'traspasos',
+        description: `Traspaso aceptado - ${canastillaIds.length} canastilla(s). Remisión: ${transfer.remision_number || 'N/A'}`,
+        details: { transfer_id: transfer.id, remision: transfer.remision_number, cantidad: canastillaIds.length, tipo: isWashingTransfer ? 'lavado' : 'normal' },
+      })
+
       setSelectedTransferForApproval(null)
       refreshTraspasos()
     } catch (error: any) {
@@ -378,6 +389,17 @@ export function TraspasosPage() {
       }
 
       alert('✅ Traspaso rechazado')
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'traspasos',
+        description: `Traspaso rechazado. Remisión: ${transferData?.remision_number || 'N/A'}`,
+        details: { transfer_id: id, remision: transferData?.remision_number },
+      })
+
       refreshTraspasos()
     } catch (error: any) {
       alert('❌ Error: ' + error.message)
@@ -435,6 +457,17 @@ export function TraspasosPage() {
       }
 
       alert('✅ Solicitud cancelada exitosamente')
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'traspasos',
+        description: `Traspaso cancelado. Remisión: ${transferData?.remision_number || 'N/A'}`,
+        details: { transfer_id: id, remision: transferData?.remision_number },
+      })
+
       refreshTraspasos()
     } catch (error: any) {
       alert('❌ Error: ' + error.message)

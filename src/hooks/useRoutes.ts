@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import {
   getRoutes,
   getMyRoutes,
@@ -57,17 +58,53 @@ export function useRoutes() {
 
   const handleCreateRoute = async (params: Parameters<typeof createRoute>[0]) => {
     const route = await createRoute(params)
+    const currentUser = useAuthStore.getState().user
+    if (currentUser) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'CREATE',
+        module: 'rutas',
+        description: `Creación de ruta: ${params.name}`,
+        details: { ruta_nombre: params.name, conductor: params.driverName, fecha: params.scheduledDate, paradas: params.stops.length },
+      })
+    }
     await fetchRoutes()
     return route
   }
 
   const handleAssignDriver = async (routeId: string, driverId: string, driverName: string) => {
     await assignDriver(routeId, driverId, driverName)
+    const currentUser = useAuthStore.getState().user
+    if (currentUser) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'UPDATE',
+        module: 'rutas',
+        description: `Conductor asignado a ruta: ${driverName}`,
+        details: { ruta_id: routeId, conductor_id: driverId, conductor_nombre: driverName },
+      })
+    }
     await fetchRoutes()
   }
 
   const handleUpdateStatus = async (routeId: string, status: string) => {
     await updateRouteStatus(routeId, status)
+    const currentUser = useAuthStore.getState().user
+    if (currentUser) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'UPDATE',
+        module: 'rutas',
+        description: `Cambio de estado de ruta a: ${status}`,
+        details: { ruta_id: routeId, nuevo_estado: status },
+      })
+    }
     await fetchRoutes()
   }
 
@@ -139,6 +176,18 @@ export function useDriverRoutes() {
     extras?: { driver_notes?: string; driver_latitude?: number; driver_longitude?: number },
   ) => {
     await updateStopStatus(stopId, status, extras)
+    const currentUser = useAuthStore.getState().user
+    if (currentUser && (status === 'COMPLETADA' || status === 'OMITIDA')) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'UPDATE',
+        module: 'rutas',
+        description: `Parada ${status === 'COMPLETADA' ? 'completada' : 'omitida'} en ruta`,
+        details: { parada_id: stopId, estado: status },
+      })
+    }
     if (activeRoute) {
       const updated = await getRouteById(activeRoute.id)
       if (updated) setActiveRoute(updated)

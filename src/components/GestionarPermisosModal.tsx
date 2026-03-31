@@ -7,6 +7,8 @@ import {
   ALL_MODULES,
   PERMISSIONS_CONFIG
 } from '@/services/permissionService'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { User, PermissionKey, PermissionModule, PermissionUpdate } from '@/types'
 
 interface GestionarPermisosModalProps {
@@ -16,6 +18,7 @@ interface GestionarPermisosModalProps {
 }
 
 export function GestionarPermisosModal({ isOpen, onClose, user }: GestionarPermisosModalProps) {
+  const { user: currentUser } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -126,6 +129,19 @@ export function GestionarPermisosModal({ isOpen, onClose, user }: GestionarPermi
       })
 
       await updateUserPermissions(user.id, permissionUpdates)
+
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'PERMISSION_CHANGE',
+          module: 'permisos',
+          description: `Actualización de permisos de ${user.first_name} ${user.last_name} (${grantedPermissions.size} permisos otorgados)`,
+          details: { usuario_id: user.id, usuario_nombre: `${user.first_name} ${user.last_name}`, permisos_otorgados: Array.from(grantedPermissions), total_permisos: grantedPermissions.size },
+        })
+      }
+
       alert('Permisos guardados exitosamente')
       onClose()
     } catch (err: any) {

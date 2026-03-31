@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { Button } from './Button'
 import { markWashingCompleted } from '@/services/washingService'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { WashingOrder, WashingItemStatus } from '@/types'
 
 interface ItemUpdate {
@@ -61,6 +63,19 @@ export function MarcarLavadoModal({
           notes: item.notes || undefined,
         }))
         await markWashingCompleted(order.id, updates)
+      }
+
+      const currentUser = useAuthStore.getState().user
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'lavado',
+          description: `Lavado completado - Orden #${order.order_number || order.id}`,
+          details: { orden_id: order.id, numero_orden: order.order_number, todos_lavados: markAllAsWashed },
+        })
       }
 
       alert('Lavado marcado como completado')

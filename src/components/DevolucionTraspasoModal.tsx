@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore'
 import { formatDate } from '@/utils/helpers'
 import { openRemisionTraspasoPDF, getRemisionTraspasoPDFBlob } from '@/utils/remisionTraspasoGenerator'
 import { uploadSignedPDF } from '@/services/storageService'
+import { logAuditEvent } from '@/services/auditService'
 
 interface DevolucionTraspasoModalProps {
   isOpen: boolean
@@ -383,6 +384,17 @@ export function DevolucionTraspasoModal({ isOpen, onClose, onSuccess, transfer }
         : `Devolución completa procesada\n\nCanastillas devueltas: ${canastillaIds.length}`
 
       alert(message)
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'CREATE',
+        module: 'traspasos',
+        description: `Devolución ${isPartialReturn ? 'parcial' : 'completa'} - ${canastillaIds.length} canastilla(s)`,
+        details: { transfer_id: transfer.id, cantidad_devuelta: canastillaIds.length, tipo: isPartialReturn ? 'parcial' : 'completa' },
+      })
+
       onSuccess()
       onClose()
     } catch (err: unknown) {

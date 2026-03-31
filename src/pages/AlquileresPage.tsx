@@ -16,6 +16,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/utils/helpers'
+import { logAuditEvent } from '@/services/auditService'
 import { openInvoicePDF, downloadInvoicePDF } from '@/utils/pdfGenerator'
 import { openRemisionPDF, getRemisionPDFBlob } from '@/utils/remisionGenerator'
 import { uploadSignedPDF } from '@/services/storageService'
@@ -157,6 +158,17 @@ export function AlquileresPage() {
       }
 
       alert(`Alquiler confirmado exitosamente.\nRemisión: ${rentalData.remision_number}`)
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'alquileres',
+        description: `Alquiler confirmado con firma. Remisión: ${rentalData.remision_number}`,
+        details: { rental_id: rentalParaConfirmar.id, remision: rentalData.remision_number },
+      })
+
       setRentalParaConfirmar(null)
       refreshRentals()
     } catch (error: any) {
@@ -232,6 +244,17 @@ export function AlquileresPage() {
       if (deleteRentalError) throw deleteRentalError
 
       alert('Alquiler cancelado exitosamente.')
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'DELETE',
+        module: 'alquileres',
+        description: `Alquiler cancelado y eliminado. Remisión: ${(rental as any).remision_number || 'N/A'}`,
+        details: { rental_id: rental.id, remision: (rental as any).remision_number, cliente_id: rental.sale_point_id },
+      })
+
       refreshRentals()
     } catch (error: any) {
       alert('Error al cancelar: ' + error.message)

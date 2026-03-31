@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { Rental, Canastilla } from '@/types'
 
 interface LoteGroup {
@@ -175,6 +176,17 @@ export function AgregarCanastillasAlquilerModal({ isOpen, onClose, onSuccess, re
       if (rentalUpdateErr) throw rentalUpdateErr
 
       alert(`Se agregaron ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''} al alquiler ${rental.remision_number}`)
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'alquileres',
+        description: `Agregar ${canastillaIds.length} canastilla(s) al alquiler ${rental.remision_number}`,
+        details: { rental_id: rental.id, remision: rental.remision_number, cantidad_agregada: canastillaIds.length },
+      })
+
       onSuccess()
       handleClose()
     } catch (err: any) {

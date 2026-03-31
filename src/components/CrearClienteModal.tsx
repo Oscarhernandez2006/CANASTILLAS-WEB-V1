@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { createSalePoint, updateSalePoint } from '@/services/salePointService'
 import { onlyLetters, onlyNumbers } from '@/utils/helpers'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { SalePoint } from '@/types'
 
 interface CrearClienteModalProps {
@@ -13,6 +15,7 @@ interface CrearClienteModalProps {
 }
 
 export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: CrearClienteModalProps) {
+  const { user: currentUser } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
@@ -64,9 +67,31 @@ export function CrearClienteModal({ isOpen, onClose, onSuccess, cliente }: Crear
     try {
       if (cliente) {
         await updateSalePoint(cliente.id, formData)
+        if (currentUser) {
+          await logAuditEvent({
+            userId: currentUser.id,
+            userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+            userRole: currentUser.role,
+            action: 'UPDATE',
+            module: 'clientes',
+            description: `Edición de cliente: ${formData.name} (${formData.client_type})`,
+            details: { cliente_id: cliente.id, cambios: formData },
+          })
+        }
         alert('✅ Cliente actualizado exitosamente')
       } else {
         await createSalePoint(formData)
+        if (currentUser) {
+          await logAuditEvent({
+            userId: currentUser.id,
+            userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+            userRole: currentUser.role,
+            action: 'CREATE',
+            module: 'clientes',
+            description: `Creación de cliente: ${formData.name} (${formData.client_type})`,
+            details: { nombre: formData.name, tipo: formData.client_type, codigo: formData.code, contacto: formData.contact_name },
+          })
+        }
         alert('✅ Cliente creado exitosamente')
       }
       onSuccess()

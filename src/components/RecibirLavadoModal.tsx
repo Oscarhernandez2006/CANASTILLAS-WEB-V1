@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from './Button'
 import { receiveOrder } from '@/services/washingService'
 import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { WashingOrder } from '@/types'
 
 interface RecibirLavadoModalProps {
@@ -29,8 +30,15 @@ export function RecibirLavadoModal({
     setLoading(true)
 
     try {
-      await receiveOrder(order.id, user.id)
-      alert('Canastillas recibidas correctamente')
+      await receiveOrder(order.id, user.id)    await logAuditEvent({
+      userId: user.id,
+      userName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      userRole: user.role,
+      action: 'UPDATE',
+      module: 'lavado',
+      description: `Recepción de orden de lavado #${order.order_number || order.id}`,
+      details: { orden_id: order.id, numero_orden: order.order_number },
+    })      alert('Canastillas recibidas correctamente')
       onSuccess()
       onClose()
     } catch (err: any) {

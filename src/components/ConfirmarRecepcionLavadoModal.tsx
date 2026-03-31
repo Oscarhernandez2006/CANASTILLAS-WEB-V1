@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { Button } from './Button'
 import { confirmReception, calculateOrderTimes } from '@/services/washingService'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import type { WashingOrder } from '@/types'
 
 interface ConfirmarRecepcionLavadoModalProps {
@@ -28,6 +30,18 @@ export function ConfirmarRecepcionLavadoModal({
 
     try {
       await confirmReception(order.id)
+      const currentUser = useAuthStore.getState().user
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'lavado',
+          description: `Confirmación de recepción de lavado - Orden #${order.order_number || order.id}`,
+          details: { orden_id: order.id, numero_orden: order.order_number },
+        })
+      }
       alert('Recepción confirmada. Las canastillas ya están disponibles en tu inventario.')
       onSuccess()
       onClose()

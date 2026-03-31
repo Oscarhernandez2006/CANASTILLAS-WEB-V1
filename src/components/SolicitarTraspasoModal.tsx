@@ -6,6 +6,7 @@ import { SearchableUserSelect } from './SearchableUserSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSalePoints } from '@/hooks/useSalePoints'
+import { logAuditEvent } from '@/services/auditService'
 import { openRemisionTraspasoPDF } from '@/utils/remisionTraspasoGenerator'
 import type { User, Canastilla, Transfer, SignatureData } from '@/types'
 
@@ -566,6 +567,18 @@ export function SolicitarTraspasoModal({
         ? `Canastillas enviadas a lavado exitosamente.\n\nRemisión de Lavado: ${remisionNumber}`
         : `Solicitud de traspaso creada exitosamente.\n\nRemisión: ${remisionNumber}`
       alert(successMessage)
+
+      const destName = isExternalTransfer ? (selectedClient?.name || 'Externo') : users.find(u => u.id === formData.to_user_id) ? `${users.find(u => u.id === formData.to_user_id)!.first_name} ${users.find(u => u.id === formData.to_user_id)!.last_name}` : 'Desconocido'
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'CREATE',
+        module: 'traspasos',
+        description: `${isExternalTransfer ? 'Traspaso externo' : isWashingTransfer ? 'Envío a lavado' : 'Solicitud de traspaso'} - ${canastillaIds.length} canastilla(s) a ${destName}`,
+        details: { remision: remisionNumber, cantidad: canastillaIds.length, tipo: isExternalTransfer ? 'externo' : isWashingTransfer ? 'lavado' : 'normal', destino: destName },
+      })
+
       onSuccess()
       handleClose()
     } catch (err: any) {

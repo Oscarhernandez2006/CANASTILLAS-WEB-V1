@@ -10,7 +10,9 @@ import { ConfirmarRecepcionLavadoModal } from '@/components/ConfirmarRecepcionLa
 import { DetalleLavadoModal } from '@/components/DetalleLavadoModal'
 import { useLavado } from '@/hooks/useLavado'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useAuthStore } from '@/store/authStore'
 import { cancelOrder } from '@/services/washingService'
+import { logAuditEvent } from '@/services/auditService'
 import type { WashingOrder } from '@/types'
 
 type TabType = 'mis-envios' | 'por-confirmar' | 'por-recibir' | 'en-proceso' | 'por-entregar' | 'historial'
@@ -30,6 +32,7 @@ export function LavadoPage() {
   } = useLavado()
 
   const { hasPermission } = usePermissions()
+  const { user: currentUser } = useAuthStore()
 
   // Estado para tabs
   const [activeTab, setActiveTab] = useState<TabType>(isWashingStaff ? 'por-recibir' : 'mis-envios')
@@ -51,6 +54,17 @@ export function LavadoPage() {
 
     try {
       await cancelOrder(order.id, reason || undefined)
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'lavado',
+          description: `Cancelación de orden de lavado #${order.order_number || order.id}`,
+          details: { orden_id: order.id, numero_orden: order.order_number, razon: reason || 'Sin razón' },
+        })
+      }
       alert('Orden cancelada exitosamente')
       refreshLavado()
     } catch (error: any) {

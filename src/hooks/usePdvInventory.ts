@@ -80,13 +80,13 @@ export function usePdvInventory() {
     fetchStatus()
   }, [fetchStatus])
 
-  const submitUpload = async (items: UploadItem[]) => {
+  const submitUpload = async (items: UploadItem[], noCanastillas: boolean = false) => {
     if (!user?.id) throw new Error('No hay usuario')
     setSubmitting(true)
     try {
       const userName = `${user.first_name || ''} ${user.last_name || ''}`.trim()
       const userCedula = user.phone || null // Usamos phone como cédula si está disponible
-      const upload = await createInventoryUpload(user.id, userName, userCedula, items)
+      const upload = await createInventoryUpload(user.id, userName, userCedula, items, noCanastillas)
       setHasUploaded(true)
       setCurrentUpload(upload)
       await fetchStatus()

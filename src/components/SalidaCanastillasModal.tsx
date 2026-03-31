@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 
 interface Lote {
   id: string
@@ -265,6 +266,17 @@ export function SalidaCanastillasModal({
       }
 
       onSuccess()
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'DELETE',
+        module: 'canastillas',
+        description: `Salida de ${getTotalSeleccionado()} canastilla(s) - Tipo: ${tipoSalida}`,
+        details: { cantidad: getTotalSeleccionado(), tipo_salida: tipoSalida },
+      })
+
       handleClose()
     } catch (err: any) {
       console.error('Error:', err)

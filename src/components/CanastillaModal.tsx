@@ -4,7 +4,9 @@ import { Button } from './Button'
 import { Input } from './Input'
 import { DynamicSelect } from './DynamicSelect'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
+import { logAuditEvent } from '@/services/auditService'
 import type { Canastilla } from '@/types'
 
 interface CanastillaModalProps {
@@ -15,6 +17,7 @@ interface CanastillaModalProps {
 }
 
 export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: CanastillaModalProps) {
+  const { user } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -100,6 +103,18 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
 
       onSuccess()
       onClose()
+
+      if (user) {
+        await logAuditEvent({
+          userId: user.id,
+          userName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          userRole: user.role,
+          action: canastilla ? 'UPDATE' : 'CREATE',
+          module: 'canastillas',
+          description: canastilla ? `Editar canastilla ${formData.codigo}` : `Crear canastilla ${formData.codigo}`,
+          details: { codigo: formData.codigo, tamaño: formData.size, color: formData.color, status: formData.status, condición: formData.condition },
+        })
+      }
     } catch (err: any) {
       setError(err.message || 'Error al guardar la canastilla')
     } finally {

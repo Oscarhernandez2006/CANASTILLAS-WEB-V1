@@ -10,6 +10,7 @@ import { EditarUsuarioModal } from '@/components/EditarUsuarioModal'
 import { useUsers } from '@/hooks/useUsers'
 import { useAuthStore } from '@/store/authStore'
 import { updateUser, activateUser, deactivateUser, adminChangeUserPassword, deleteUserCompletely } from '@/services/userService'
+import { logAuditEvent } from '@/services/auditService'
 import { formatDate } from '@/utils/helpers'
 import { validatePassword } from '@/utils/security'
 
@@ -70,6 +71,7 @@ export function UsuariosPage() {
   const isSuperAdmin = currentUser?.role === 'super_admin'
 
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
+    const targetUser = users.find(u => u.id === userId)
     try {
       if (currentStatus) {
         await deactivateUser(userId)
@@ -77,6 +79,17 @@ export function UsuariosPage() {
       } else {
         await activateUser(userId)
         alert('✅ Usuario activado exitosamente')
+      }
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'usuarios',
+          description: `${currentStatus ? 'Desactivación' : 'Activación'} de usuario: ${targetUser?.first_name || ''} ${targetUser?.last_name || ''} (${targetUser?.email || ''})`,
+          details: { usuario_id: userId, accion: currentStatus ? 'desactivar' : 'activar' },
+        })
       }
       refreshUsers()
     } catch (error: any) {
@@ -100,6 +113,17 @@ export function UsuariosPage() {
     setPasswordLoading(true)
     try {
       await adminChangeUserPassword(passwordUser.id, newPassword)
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'usuarios',
+          description: `Cambio de contraseña de: ${passwordUser.first_name} ${passwordUser.last_name} (${passwordUser.email})`,
+          details: { usuario_id: passwordUser.id },
+        })
+      }
       alert(`✅ Contraseña de ${passwordUser.first_name} ${passwordUser.last_name} actualizada exitosamente`)
       setShowPasswordModal(false)
       setPasswordUser(null)
@@ -122,6 +146,17 @@ export function UsuariosPage() {
     setDeleteLoading(true)
     try {
       await deleteUserCompletely(deleteUser.id)
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'DELETE',
+          module: 'usuarios',
+          description: `Eliminación completa de usuario: ${deleteUser.first_name} ${deleteUser.last_name} (${deleteUser.email})`,
+          details: { usuario_id: deleteUser.id, email: deleteUser.email, rol: deleteUser.role },
+        })
+      }
       alert(`✅ Usuario ${deleteUser.first_name} ${deleteUser.last_name} eliminado completamente`)
       setShowDeleteModal(false)
       setDeleteUser(null)
@@ -140,6 +175,18 @@ export function UsuariosPage() {
 
     try {
       await updateUser(userId, { role: newRole })
+      if (currentUser) {
+        const targetUser = users.find(u => u.id === userId)
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'usuarios',
+          description: `Cambio de rol de ${targetUser?.first_name || ''} ${targetUser?.last_name || ''} a ${ROLE_LABELS[newRole]}`,
+          details: { usuario_id: userId, nuevo_rol: newRole, rol_anterior: targetUser?.role },
+        })
+      }
       alert('✅ Rol actualizado exitosamente')
       refreshUsers()
     } catch (error: any) {

@@ -5,6 +5,8 @@ import { DynamicSelect } from './DynamicSelect'
 import { updateUser } from '@/services/userService'
 import { onlyLetters, onlyNumbers } from '@/utils/helpers'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 
 interface User {
   id: string
@@ -38,6 +40,7 @@ const ROLES = [
 ]
 
 export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarUsuarioModalProps) {
+  const { user: currentUser } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -100,6 +103,18 @@ export function EditarUsuarioModal({ isOpen, onClose, onSuccess, user }: EditarU
         department: formData.department || undefined,
         area: formData.area || undefined,
       })
+
+      if (currentUser) {
+        await logAuditEvent({
+          userId: currentUser.id,
+          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+          userRole: currentUser.role,
+          action: 'UPDATE',
+          module: 'usuarios',
+          description: `Edición de usuario: ${formData.first_name} ${formData.last_name} (${formData.email})`,
+          details: { usuario_editado_id: user.id, cambios: formData },
+        })
+      }
 
       alert('Usuario actualizado exitosamente')
       onSuccess()

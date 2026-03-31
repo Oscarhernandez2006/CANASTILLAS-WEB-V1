@@ -6,6 +6,7 @@ import { FirmaDigitalModal } from './FirmaDigitalModal'
 import { SearchableUserSelect } from './SearchableUserSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 import { createWashingOrder, getWashingStaff, getAvailableCanastillasForWashing } from '@/services/washingService'
 import type { User, Canastilla, SignatureData } from '@/types'
 
@@ -211,6 +212,17 @@ export function EnviarLavadoModal({
         }])
 
       alert(`Orden de lavado creada exitosamente. Remisión: ${order.remision_entrega_number}`)
+
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'CREATE',
+        module: 'lavado',
+        description: `Enviar ${canastillaIds.length} canastilla(s) a lavado. Remisión: ${order.remision_entrega_number}`,
+        details: { orden_id: order.id, remision: order.remision_entrega_number, cantidad: canastillaIds.length, personal_lavado_id: formData.washing_staff_id },
+      })
+
       onSuccess()
       handleClose()
     } catch (err: any) {

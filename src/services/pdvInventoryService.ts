@@ -73,6 +73,7 @@ export interface PdvUpload {
   period_year: number
   status: string
   is_late: boolean
+  no_canastillas: boolean
   extension_granted_by: string | null
   extension_granted_at: string | null
   uploaded_at: string
@@ -210,7 +211,8 @@ export async function createInventoryUpload(
   userId: string,
   userName: string,
   userCedula: string | null,
-  items: UploadItem[]
+  items: UploadItem[],
+  noCanastillas: boolean = false
 ): Promise<PdvUpload> {
   const { month, year } = getCurrentPeriod()
   const isLate = !isLastDayOfMonth()
@@ -237,6 +239,7 @@ export async function createInventoryUpload(
       period_year: year,
       status: 'completado',
       is_late: isLate,
+      no_canastillas: noCanastillas,
       uploaded_at: new Date().toISOString(),
     })
     .select()

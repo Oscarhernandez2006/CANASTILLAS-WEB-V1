@@ -6,6 +6,8 @@ import { createUser } from '@/services/userService'
 import { onlyLetters, onlyNumbers } from '@/utils/helpers'
 import { validatePassword } from '@/utils/security'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
+import { useAuthStore } from '@/store/authStore'
+import { logAuditEvent } from '@/services/auditService'
 
 interface CrearUsuarioModalProps {
   isOpen: boolean
@@ -26,6 +28,7 @@ const ROLES = [
 ]
 
 export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioModalProps) {
+  const { user: currentUser } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -93,6 +96,18 @@ export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioMo
     })
 
     console.log('✅ Resultado:', result)
+
+    if (currentUser) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+        userRole: currentUser.role,
+        action: 'CREATE',
+        module: 'usuarios',
+        description: `Creación de usuario: ${formData.full_name} (${formData.email}) con rol ${formData.role}`,
+        details: { email: formData.email, nombre: formData.full_name, rol: formData.role, ubicacion: formData.department, area: formData.area },
+      })
+    }
 
     alert('✅ Usuario creado exitosamente. Ya puede iniciar sesión.')
     onSuccess()

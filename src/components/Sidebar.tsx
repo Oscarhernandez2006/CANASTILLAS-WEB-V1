@@ -13,7 +13,7 @@ interface SidebarProps {
 const groupRoutes: Record<string, string[]> = {
   operacion: ['/inventario', '/canastillas', '/traspasos', '/cargue-pdv', '/control-pdv', '/trazabilidad', '/rutas', '/mi-ruta'],
   facturacion: ['/alquileres', '/facturacion', '/consultar-facturacion'],
-  admin: ['/clientes', '/usuarios', '/permisos', '/auditoria'],
+  admin: ['/clientes', '/usuarios', '/permisos', '/auditoria', '/adicion-inventario'],
 }
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
@@ -102,6 +102,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     permissions.canAccessUsuarios() && 'usuarios',
     user?.role === 'super_admin' && 'permisos',
     permissions.canAccessAuditoria() && 'auditoria',
+    user?.role === 'super_admin' && 'adicion-inventario',
   ].filter(Boolean)
 
   const isDriver = user?.role === 'conductor'
@@ -254,7 +255,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div>
           <button
             onClick={() => toggleGroup('admin')}
-            className={groupHeaderClass('admin', ['/clientes', '/usuarios', '/permisos', '/auditoria'])}
+            className={groupHeaderClass('admin', ['/clientes', '/usuarios', '/permisos', '/auditoria', '/adicion-inventario'])}
           >
             <div className="flex items-center space-x-3">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,6 +297,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   <span>Auditoría</span>
+                </Link>
+              )}
+              {user?.role === 'super_admin' && (
+                <Link to="/adicion-inventario" onClick={handleLinkClick} className={linkClass('/adicion-inventario')}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Adición Inventario</span>
                 </Link>
               )}
             </div>

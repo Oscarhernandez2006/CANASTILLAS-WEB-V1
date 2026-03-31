@@ -7,6 +7,7 @@ import { useSalePoints } from '@/hooks/useSalePoints'
 import { useRentalSettings } from '@/hooks/useRentalSettings'
 import type { Canastilla } from '@/types'
 import { formatCurrency } from '@/utils/helpers'
+import { logAuditEvent } from '@/services/auditService'
 
 interface LoteGroup {
   key: string
@@ -251,6 +252,17 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
       }
 
       alert(`Alquiler creado. Pendiente confirmación con firma de servicio.\nRemisión: ${remisionNumber}`)
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'CREATE',
+        module: 'alquileres',
+        description: `Crear alquiler ${formData.rental_type} - ${canastillaIds.length} canastilla(s). Remisión: ${remisionNumber}`,
+        details: { remision: remisionNumber, tipo: formData.rental_type, cantidad: canastillaIds.length, cliente_id: formData.sale_point_id },
+      })
+
       onSuccess()
       handleClose()
     } catch (err: any) {

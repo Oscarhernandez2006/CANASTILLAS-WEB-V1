@@ -5,6 +5,7 @@ import { DynamicSelect } from './DynamicSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
+import { logAuditEvent } from '@/services/auditService'
 import type { TipoPropiedad } from '@/types'
 
 interface CrearLoteCanastillasModalProps {
@@ -128,6 +129,16 @@ export function CrearLoteCanastillasModal({ isOpen, onClose, onSuccess }: CrearL
       }
 
       console.log(`Todas las ${insertados} canastillas fueron creadas exitosamente`)
+
+      await logAuditEvent({
+        userId: user.id,
+        userName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+        userRole: user.role,
+        action: 'CREATE',
+        module: 'canastillas',
+        description: `Crear lote de ${cantidadNum} canastilla(s) - ${formData.size} ${formData.color}`,
+        details: { cantidad: cantidadNum, tamaño: formData.size, color: formData.color, forma: formData.shape, condición: formData.condition, tipo_propiedad: formData.tipo_propiedad, ubicación: formData.current_location },
+      })
 
       onSuccess()
       onClose()

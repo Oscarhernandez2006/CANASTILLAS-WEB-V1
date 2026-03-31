@@ -32,6 +32,7 @@ import { ControlInventarioPDVPage } from './pages/ControlInventarioPDVPage'
 import { AuditoriaPage } from './pages/AuditoriaPage'
 import { RutasPage } from './pages/RutasPage'
 import { MiRutaPage } from './pages/MiRutaPage'
+import { AdicionInventarioPage } from './pages/AdicionInventarioPage'
 import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
@@ -267,6 +268,15 @@ function AppRoutes() {
           element={
             <ProtectedRoute requirePermission={permissions.canAccessAuditoria}>
               <AuditoriaPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/adicion-inventario"
+          element={
+            <ProtectedRoute>
+              <AdicionInventarioPage />
             </ProtectedRoute>
           }
         />
