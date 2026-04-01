@@ -49,7 +49,7 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-[1000] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 overflow-hidden">
+    <header className="sticky top-0 z-[1000] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 overflow-visible">
       <div className="flex items-center justify-between gap-2">
         {/* Izquierda: hamburguesa + título */}
         <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1 basis-0">

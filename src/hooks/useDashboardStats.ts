@@ -88,6 +88,15 @@ export function useDashboardStats() {
       }
 
       // Ejecutar todas las consultas de conteo en paralelo
+      // Para "disponibles", SIEMPRE filtrar por current_owner_id del usuario (como en traspasos)
+      const buildDisponiblesUserQuery = () => {
+        return supabase
+          .from('canastillas')
+          .select('*', { count: 'exact', head: true })
+          .eq('current_owner_id', user.id)
+          .eq('status', 'DISPONIBLE')
+      }
+
       const [
         totalResult,
         disponiblesResult,
@@ -98,7 +107,7 @@ export function useDashboardStats() {
         enRetornoResult,
       ] = await Promise.all([
         buildCountQuery(),
-        buildCountQuery('DISPONIBLE'),
+        buildDisponiblesUserQuery(),
         buildCountQuery('EN_LAVADO'),
         buildCountQuery('EN_USO_INTERNO'),
         buildCountQuery('EN_REPARACION'),
@@ -107,12 +116,39 @@ export function useDashboardStats() {
       ])
 
       const totalCanastillas = totalResult.count || 0
-      const disponibles = disponiblesResult.count || 0
+      const disponiblesTotal = disponiblesResult.count || 0
       const enLavado = enLavadoResult.count || 0
       const enUsoInterno = enUsoInternoResult.count || 0
       const enReparacion = enReparacionResult.count || 0
       const enRetorno = enRetornoResult.count || 0
       const totalEnAlquiler = enAlquilerResult.count || 0
+
+      // Calcular canastillas retenidas en traspasos pendientes del usuario (igual que en traspasos)
+      let canastillasRetenidasCount = 0
+
+      {
+        const { data: traspasosPendientes } = await supabase
+          .from('transfers')
+          .select('id')
+          .eq('from_user_id', user.id)
+          .eq('status', 'PENDIENTE')
+
+        if (traspasosPendientes && traspasosPendientes.length > 0) {
+          const transferIds = traspasosPendientes.map(t => t.id)
+          const BATCH_SIZE = 500
+          for (let i = 0; i < transferIds.length; i += BATCH_SIZE) {
+            const batch = transferIds.slice(i, i + BATCH_SIZE)
+            const { count } = await supabase
+              .from('transfer_items')
+              .select('*', { count: 'exact', head: true })
+              .in('transfer_id', batch)
+            canastillasRetenidasCount += count || 0
+          }
+        }
+      }
+
+      // Disponibles reales = DISPONIBLE - retenidas en traspasos pendientes
+      const disponibles = Math.max(0, disponiblesTotal - canastillasRetenidasCount)
 
       // Para diferenciar alquiler interno/externo, consultar los rentals activos
       let enAlquilerInterno = 0
@@ -161,14 +197,15 @@ export function useDashboardStats() {
       // Obtener ubicaciones reales de la base de datos
       // Consultar TODAS las canastillas con paginación (Supabase limita a 1000 por consulta)
       const PAGE_SIZE = 1000
-      let allCanastillasData: { current_location: string | null; status: string }[] = []
+      let allCanastillasData: { current_location: string | null; current_area: string | null; status: string; current_owner_id: string | null }[] = []
       let hasMore = true
       let offset = 0
 
       while (hasMore) {
         let locationQuery = supabase
           .from('canastillas')
-          .select('current_location, status')
+          .select('current_location, current_area, status, current_owner_id')
+          .not('status', 'in', '(DADA_DE_BAJA,EXTRAVIADA)')
 
         if (!isSuperAdmin) {
           locationQuery = locationQuery.eq('current_owner_id', user.id)
@@ -187,10 +224,60 @@ export function useDashboardStats() {
       }
 
       // Agrupar por ubicación
+      // Si no tiene current_location, intentar usar el nombre del propietario
+      // Obtener mapa de usuarios para resolver nombres
+      const ownerIds = [...new Set(allCanastillasData.filter(c => (!c.current_location || c.current_location.trim() === '') && c.current_owner_id).map(c => c.current_owner_id!))]
+      const ownerMap: Record<string, string> = {}
+
+      if (ownerIds.length > 0) {
+        const BATCH_USERS = 500
+        for (let i = 0; i < ownerIds.length; i += BATCH_USERS) {
+          const batch = ownerIds.slice(i, i + BATCH_USERS)
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, first_name, last_name')
+            .in('id', batch)
+          if (usersData) {
+            for (const u of usersData) {
+              ownerMap[u.id] = `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Sin nombre'
+            }
+          }
+        }
+      }
+
       const locationMap: Record<string, LocationData> = {}
 
+      // Cargar TODAS las ubicaciones registradas en canastilla_attributes para que aparezcan aunque tengan 0 canastillas
+      const { data: allLocations } = await supabase
+        .from('canastilla_attributes')
+        .select('value')
+        .eq('attribute_type', 'UBICACION')
+        .eq('is_active', true)
+        .order('value')
+
+      if (allLocations) {
+        for (const loc of allLocations) {
+          if (loc.value && loc.value.trim() !== '') {
+            locationMap[loc.value] = {
+              name: loc.value,
+              total: 0,
+              disponibles: 0,
+              enAlquiler: 0,
+              enUsoInterno: 0,
+              enLavado: 0,
+              enReparacion: 0,
+              enRetorno: 0,
+            }
+          }
+        }
+      }
+
       allCanastillasData.forEach((c) => {
-        const locationName = c.current_location || 'Sin ubicación'
+        let locationName = c.current_location && c.current_location.trim() !== '' 
+          ? c.current_location 
+          : (c.current_owner_id && ownerMap[c.current_owner_id] 
+              ? `👤 ${ownerMap[c.current_owner_id]}` 
+              : 'Sin ubicación')
 
         if (!locationMap[locationName]) {
           locationMap[locationName] = {

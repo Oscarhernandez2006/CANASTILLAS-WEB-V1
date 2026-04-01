@@ -47,8 +47,8 @@ async function verifyAdmin(authHeader: string | undefined): Promise<{ userId: st
     throw new Error('Token inválido o expirado')
   }
 
-  // Verificar rol en la tabla users
-  const { data: userData, error: userError } = await supabaseClient
+  // Verificar rol en la tabla users (usar supabaseAdmin para bypasear RLS)
+  const { data: userData, error: userError } = await supabaseAdmin
     .from('users')
     .select('role, is_active')
     .eq('id', user.id)

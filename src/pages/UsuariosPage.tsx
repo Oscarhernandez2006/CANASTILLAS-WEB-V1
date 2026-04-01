@@ -12,7 +12,7 @@ import { useAuthStore } from '@/store/authStore'
 import { updateUser, activateUser, deactivateUser, adminChangeUserPassword, deleteUserCompletely } from '@/services/userService'
 import { logAuditEvent } from '@/services/auditService'
 import { formatDate } from '@/utils/helpers'
-import { validatePassword } from '@/utils/security'
+import { validatePassword, getPasswordStrength } from '@/utils/security'
 
 const ROLE_LABELS: { [key: string]: string } = {
   super_admin: 'Super Admin',
@@ -522,7 +522,7 @@ export function UsuariosPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres, mayúscula, número y especial"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white pr-10"
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -534,6 +534,33 @@ export function UsuariosPage() {
                     </svg>
                   </button>
                 </div>
+                {newPassword && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex gap-1">
+                      {[1,2,3].map(level => (
+                        <div key={level} className={`h-1 flex-1 rounded-full ${level <= getPasswordStrength(newPassword).level ? getPasswordStrength(newPassword).color : 'bg-gray-200'}`} />
+                      ))}
+                    </div>
+                    <p className={`text-xs ${getPasswordStrength(newPassword).color.replace('bg-', 'text-')}`}>{getPasswordStrength(newPassword).label}</p>
+                    <ul className="text-xs space-y-0.5">
+                      <li className={newPassword.length >= 8 ? 'text-green-600' : 'text-red-500'}>
+                        {newPassword.length >= 8 ? '✓' : '✗'} Mínimo 8 caracteres
+                      </li>
+                      <li className={/[A-Z]/.test(newPassword) ? 'text-green-600' : 'text-red-500'}>
+                        {/[A-Z]/.test(newPassword) ? '✓' : '✗'} Una letra mayúscula
+                      </li>
+                      <li className={/[a-z]/.test(newPassword) ? 'text-green-600' : 'text-red-500'}>
+                        {/[a-z]/.test(newPassword) ? '✓' : '✗'} Una letra minúscula
+                      </li>
+                      <li className={/[0-9]/.test(newPassword) ? 'text-green-600' : 'text-red-500'}>
+                        {/[0-9]/.test(newPassword) ? '✓' : '✗'} Un número
+                      </li>
+                      <li className={/[!@#$%^&*(),.?":{}|<>]/.test(newPassword) ? 'text-green-600' : 'text-red-500'}>
+                        {/[!@#$%^&*(),.?":{}|<>]/.test(newPassword) ? '✓' : '✗'} Un carácter especial (!@#$%...)
+                      </li>
+                    </ul>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirmar Contraseña *</label>
@@ -554,7 +581,7 @@ export function UsuariosPage() {
               <Button
                 onClick={handleChangePassword}
                 loading={passwordLoading}
-                disabled={passwordLoading || newPassword.length < 8 || newPassword !== confirmPassword || !validatePassword(newPassword).isValid}
+                disabled={passwordLoading || !validatePassword(newPassword).isValid || newPassword !== confirmPassword}
                 className="flex-1"
               >
                 Cambiar Contraseña

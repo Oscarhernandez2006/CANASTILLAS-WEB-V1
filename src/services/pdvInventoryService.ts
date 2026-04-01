@@ -175,19 +175,35 @@ export async function mustUploadNow(userId: string): Promise<boolean> {
  * @returns Array de tipos con tamaño, color y cantidad total
  */
 export async function getCanastillaTypes(): Promise<{ size: string; color: string; total: number }[]> {
-  const { data, error } = await supabase
-    .from('canastillas')
-    .select('size, color')
-    .not('status', 'eq', 'DADA_DE_BAJA')
+  const PAGE_SIZE = 1000
+  let allData: { size: string; color: string }[] = []
+  let hasMore = true
+  let offset = 0
 
-  if (error) {
-    console.error('Error fetching canastilla types:', error)
-    throw error
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('canastillas')
+      .select('size, color')
+      .not('status', 'eq', 'DADA_DE_BAJA')
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (error) {
+      console.error('Error fetching canastilla types:', error)
+      throw error
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data]
+      offset += PAGE_SIZE
+      hasMore = data.length === PAGE_SIZE
+    } else {
+      hasMore = false
+    }
   }
 
   // Agrupar por size + color
   const grouped: Record<string, { size: string; color: string; total: number }> = {}
-  for (const item of data || []) {
+  for (const item of allData) {
     const key = `${item.size}_${item.color}`
     if (!grouped[key]) {
       grouped[key] = { size: item.size, color: item.color, total: 0 }
@@ -334,16 +350,32 @@ export async function getUploadsByUser(userId: string): Promise<PdvUpload[]> {
  * @returns Array de tipos con cantidad real
  */
 export async function getRealInventoryForPdv(userId: string): Promise<{ size: string; color: string; cantidad: number }[]> {
-  const { data, error } = await supabase
-    .from('canastillas')
-    .select('size, color')
-    .eq('current_owner_id', userId)
-    .not('status', 'in', '(DADA_DE_BAJA,FUERA_SERVICIO)')
+  const PAGE_SIZE = 1000
+  let allData: { size: string; color: string }[] = []
+  let hasMore = true
+  let offset = 0
 
-  if (error) throw error
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('canastillas')
+      .select('size, color')
+      .eq('current_owner_id', userId)
+      .not('status', 'in', '(DADA_DE_BAJA,FUERA_SERVICIO)')
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data]
+      offset += PAGE_SIZE
+      hasMore = data.length === PAGE_SIZE
+    } else {
+      hasMore = false
+    }
+  }
 
   const grouped: Record<string, { size: string; color: string; cantidad: number }> = {}
-  for (const item of data || []) {
+  for (const item of allData) {
     const key = `${item.size}_${item.color}`
     if (!grouped[key]) {
       grouped[key] = { size: item.size, color: item.color, cantidad: 0 }

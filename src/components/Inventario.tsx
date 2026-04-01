@@ -58,23 +58,35 @@ export function Inventario() {
       // 1. Obtener IDs de canastillas en traspasos PENDIENTES del usuario actual
       let canastillasRetenidas: string[] = []
 
-      if (!isSuperAdmin) {
-        const { data: traspasosPendientes, error: errorTraspasos } = await supabase
+      {
+        let transferQuery = supabase
           .from('transfers')
           .select('id')
-          .eq('from_user_id', user.id)
           .eq('status', 'PENDIENTE')
+
+        // Para todos los usuarios, filtrar por sus traspasos salientes
+        // Super_admin ve todos los traspasos pendientes del sistema
+        if (!isSuperAdmin) {
+          transferQuery = transferQuery.eq('from_user_id', user.id)
+        }
+
+        const { data: traspasosPendientes, error: errorTraspasos } = await transferQuery
 
         if (!errorTraspasos && traspasosPendientes && traspasosPendientes.length > 0) {
           const transferIds = traspasosPendientes.map(t => t.id)
 
-          const { data: itemsRetenidos, error: errorItems } = await supabase
-            .from('transfer_items')
-            .select('canastilla_id')
-            .in('transfer_id', transferIds)
+          // Paginar en lotes de 500 para no exceder límites de IN clause
+          const BATCH_SIZE = 500
+          for (let i = 0; i < transferIds.length; i += BATCH_SIZE) {
+            const batch = transferIds.slice(i, i + BATCH_SIZE)
+            const { data: itemsRetenidos, error: errorItems } = await supabase
+              .from('transfer_items')
+              .select('canastilla_id')
+              .in('transfer_id', batch)
 
-          if (!errorItems && itemsRetenidos) {
-            canastillasRetenidas = itemsRetenidos.map(item => item.canastilla_id)
+            if (!errorItems && itemsRetenidos) {
+              canastillasRetenidas = [...canastillasRetenidas, ...itemsRetenidos.map(item => item.canastilla_id)]
+            }
           }
         }
       }

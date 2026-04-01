@@ -67,13 +67,13 @@ export function AdicionInventarioPage() {
   }
 
   const fetchCanastillasYAgrupar = async () => {
-    if (!selectedUserId) return
+    if (!selectedUserId || !currentUser) return
 
     setLoadingLotes(true)
     setError('')
 
     try {
-      // Obtener todas las canastillas DISPONIBLE que NO pertenecen al usuario destino
+      // Obtener canastillas DISPONIBLE del inventario personal del admin logueado
       const PAGE_SIZE = 1000
       let disponibles: Canastilla[] = []
       let hasMore = true
@@ -84,7 +84,7 @@ export function AdicionInventarioPage() {
           .from('canastillas')
           .select('*')
           .eq('status', 'DISPONIBLE')
-          .neq('current_owner_id', selectedUserId)
+          .eq('current_owner_id', currentUser.id)
           .order('color', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
@@ -99,19 +99,12 @@ export function AdicionInventarioPage() {
         }
       }
 
-      // Mapa de usuarios para nombres de propietarios
-      const userMap: Record<string, string> = {}
-      for (const u of users) {
-        userMap[u.id] = `${u.first_name || ''} ${u.last_name || ''}`.trim()
-      }
-
-      // Agrupar por size + color + shape + condition + tipo_propiedad + propietario
+      // Agrupar por size + color + shape + condition + tipo_propiedad
       const grouped: Record<string, LoteGroup> = {}
+      const ownerName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim()
 
       for (const canastilla of disponibles) {
-        const ownerId = canastilla.current_owner_id || 'SIN_ASIGNAR'
-        const ownerName = ownerId === 'SIN_ASIGNAR' ? 'Sin asignar' : (userMap[ownerId] || 'Usuario desconocido')
-        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.condition || ''}-${canastilla.tipo_propiedad || 'PROPIA'}-${ownerId}`
+        const key = `${canastilla.size}-${canastilla.color}-${canastilla.shape || ''}-${canastilla.condition || ''}-${canastilla.tipo_propiedad || 'PROPIA'}`
 
         if (!grouped[key]) {
           grouped[key] = {
@@ -121,7 +114,7 @@ export function AdicionInventarioPage() {
             shape: canastilla.shape || '',
             condition: canastilla.condition || '',
             tipo_propiedad: canastilla.tipo_propiedad || 'PROPIA',
-            propietarioActual: ownerId,
+            propietarioActual: currentUser.id,
             propietarioNombre: ownerName,
             totalDisponible: 0,
             cantidadAgregar: 0,
@@ -292,8 +285,8 @@ export function AdicionInventarioPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm">
-              Seleccione canastillas existentes del inventario y asígnelas al usuario destino. 
-              Solo se muestran canastillas con estado <strong>DISPONIBLE</strong> que no pertenezcan al usuario seleccionado.
+              Seleccione canastillas de <strong>su inventario personal</strong> y asígnelas al usuario destino. 
+              Solo se muestran canastillas con estado <strong>DISPONIBLE</strong> de su propio inventario.
               Todos los movimientos quedan registrados en el log de auditoría.
             </p>
           </div>

@@ -1,5 +1,5 @@
 /** @module CrearAlquilerModal @description Modal para crear un nuevo alquiler interno o externo. */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from './Button'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -37,6 +37,10 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   
   const [lotes, setLotes] = useState<LoteGroup[]>([])
   const [loadingLotes, setLoadingLotes] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+  const clientInputRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState({
     sale_point_id: '',
@@ -49,6 +53,37 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
       fetchCanastillasYAgrupar()
     }
   }, [isOpen, step])
+
+  // Cerrar dropdown de clientes al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
+        setClientDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedSalePoint = salePoints.find(sp => sp.id === formData.sale_point_id)
+
+  const filteredSalePoints = clientSearch.trim()
+    ? salePoints.filter(sp => {
+        const term = clientSearch.toLowerCase()
+        return sp.name?.toLowerCase().includes(term) ||
+               sp.contact_name?.toLowerCase().includes(term) ||
+               sp.address?.toLowerCase().includes(term)
+      })
+    : salePoints
+
+  const filteredPdv = filteredSalePoints.filter(sp => sp.client_type === 'PUNTO_VENTA')
+  const filteredExternos = filteredSalePoints.filter(sp => sp.client_type === 'CLIENTE_EXTERNO')
+
+  const handleSelectClient = (id: string) => {
+    setFormData({ ...formData, sale_point_id: id })
+    setClientDropdownOpen(false)
+    setClientSearch('')
+  }
 
   const fetchCanastillasYAgrupar = async () => {
     if (!user) return
@@ -278,6 +313,8 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
     setFormData({ sale_point_id: '', rental_type: 'EXTERNO', estimated_return_date: '' })
     setLotes([])
     setError('')
+    setClientSearch('')
+    setClientDropdownOpen(false)
     onClose()
   }
 
@@ -353,28 +390,93 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
                     </div>
                   ) : (
-                    <select
-                      value={formData.sale_point_id}
-                      onChange={(e) => setFormData({ ...formData, sale_point_id: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      required
-                    >
-                      <option value="">Seleccionar...</option>
-                      <optgroup label="Puntos de Venta">
-                        {salePoints.filter(sp => sp.client_type === 'PUNTO_VENTA').map(sp => (
-                          <option key={sp.id} value={sp.id}>
-                            {sp.name} - {sp.contact_name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Clientes Externos">
-                        {salePoints.filter(sp => sp.client_type === 'CLIENTE_EXTERNO').map(sp => (
-                          <option key={sp.id} value={sp.id}>
-                            {sp.name} - {sp.contact_name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
+                    <div className="relative" ref={clientDropdownRef}>
+                      {/* Campo de búsqueda / selección */}
+                      {selectedSalePoint && !clientDropdownOpen ? (
+                        <div
+                          onClick={() => { setClientDropdownOpen(true); setTimeout(() => clientInputRef.current?.focus(), 50) }}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg cursor-pointer hover:border-primary-400 flex items-center justify-between"
+                        >
+                          <div>
+                            <span className="font-medium text-gray-900">{selectedSalePoint.name}</span>
+                            {selectedSalePoint.contact_name && (
+                              <span className="text-gray-500 ml-2">- {selectedSalePoint.contact_name}</span>
+                            )}
+                            <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                              selectedSalePoint.client_type === 'PUNTO_VENTA' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {selectedSalePoint.client_type === 'PUNTO_VENTA' ? 'PDV' : 'Externo'}
+                            </span>
+                          </div>
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <input
+                            ref={clientInputRef}
+                            type="text"
+                            value={clientSearch}
+                            onChange={(e) => { setClientSearch(e.target.value); setClientDropdownOpen(true) }}
+                            onFocus={() => setClientDropdownOpen(true)}
+                            placeholder="Buscar cliente por nombre..."
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Dropdown de resultados */}
+                      {clientDropdownOpen && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {filteredPdv.length === 0 && filteredExternos.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center">No se encontraron clientes</div>
+                          ) : (
+                            <>
+                              {filteredPdv.length > 0 && (
+                                <>
+                                  <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 uppercase sticky top-0">Puntos de Venta</div>
+                                  {filteredPdv.map(sp => (
+                                    <button
+                                      key={sp.id}
+                                      type="button"
+                                      onClick={() => handleSelectClient(sp.id)}
+                                      className={`w-full text-left px-4 py-2.5 hover:bg-primary-50 transition-colors ${
+                                        formData.sale_point_id === sp.id ? 'bg-primary-50 border-l-2 border-primary-500' : ''
+                                      }`}
+                                    >
+                                      <p className="text-sm font-medium text-gray-900">{sp.name}</p>
+                                      {sp.contact_name && <p className="text-xs text-gray-500">{sp.contact_name}</p>}
+                                    </button>
+                                  ))}
+                                </>
+                              )}
+                              {filteredExternos.length > 0 && (
+                                <>
+                                  <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 uppercase sticky top-0">Clientes Externos</div>
+                                  {filteredExternos.map(sp => (
+                                    <button
+                                      key={sp.id}
+                                      type="button"
+                                      onClick={() => handleSelectClient(sp.id)}
+                                      className={`w-full text-left px-4 py-2.5 hover:bg-primary-50 transition-colors ${
+                                        formData.sale_point_id === sp.id ? 'bg-primary-50 border-l-2 border-primary-500' : ''
+                                      }`}
+                                    >
+                                      <p className="text-sm font-medium text-gray-900">{sp.name}</p>
+                                      {sp.contact_name && <p className="text-xs text-gray-500">{sp.contact_name}</p>}
+                                    </button>
+                                  ))}
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 

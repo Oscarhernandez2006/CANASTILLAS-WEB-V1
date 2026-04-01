@@ -40,8 +40,25 @@ export function ControlInventarioPDVPage() {
   const [pdvUsers, setPdvUsers] = useState<PdvUser[]>([])
   const [uploads, setUploads] = useState<PdvUpload[]>([])
   const [extensions, setExtensions] = useState<PdvExtension[]>([])
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentPeriod().month)
-  const [selectedYear, setSelectedYear] = useState(getCurrentPeriod().year)
+
+  // En los primeros 5 días del mes, mostrar el mes anterior por defecto
+  // ya que los cargues se hacen el último día del mes
+  const getDefaultPeriod = () => {
+    const now = new Date()
+    const day = now.getDate()
+    const { month, year } = getCurrentPeriod()
+    if (day <= 5) {
+      // Mes anterior
+      const prevMonth = month === 1 ? 12 : month - 1
+      const prevYear = month === 1 ? year - 1 : year
+      return { month: prevMonth, year: prevYear }
+    }
+    return { month, year }
+  }
+  const defaultPeriod = getDefaultPeriod()
+
+  const [selectedMonth, setSelectedMonth] = useState(defaultPeriod.month)
+  const [selectedYear, setSelectedYear] = useState(defaultPeriod.year)
   const [selectedPdv, setSelectedPdv] = useState<string | null>(null)
   const [realInventory, setRealInventory] = useState<{ size: string; color: string; cantidad: number }[]>([])
   const [loadingInventory, setLoadingInventory] = useState(false)
@@ -171,6 +188,32 @@ export function ControlInventarioPDVPage() {
               </div>
             </div>
           </div>
+
+          {/* Banner informativo: mes actual sin cargues */}
+          {(() => {
+            const { month: curMonth, year: curYear } = getCurrentPeriod()
+            const isCurrentMonth = selectedMonth === curMonth && selectedYear === curYear
+            const isEarlyInMonth = new Date().getDate() <= 5
+            if (isCurrentMonth && uploads.length === 0 && isEarlyInMonth) {
+              const prevMonth = curMonth === 1 ? 12 : curMonth - 1
+              const prevYear = curMonth === 1 ? curYear - 1 : curYear
+              return (
+                <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 text-blue-800 px-4 py-3 rounded-r-lg flex items-center justify-between">
+                  <p className="text-sm">
+                    <strong>Nota:</strong> Estás viendo {MONTH_NAMES[curMonth]} {curYear} — aún no hay cargues este mes.
+                    Los cargues del mes anterior están disponibles en <strong>{MONTH_NAMES[prevMonth]} {prevYear}</strong>.
+                  </p>
+                  <button
+                    onClick={() => { setSelectedMonth(prevMonth); setSelectedYear(prevYear); setSelectedPdv(null) }}
+                    className="ml-4 px-3 py-1 text-xs font-medium rounded-full bg-blue-600 text-white hover:bg-blue-700 transition flex-shrink-0"
+                  >
+                    Ver {MONTH_NAMES[prevMonth]}
+                  </button>
+                </div>
+              )
+            }
+            return null
+          })()}
 
           {/* Resumen */}
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
