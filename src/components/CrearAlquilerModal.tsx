@@ -42,6 +42,15 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const clientDropdownRef = useRef<HTMLDivElement>(null)
   const clientInputRef = useRef<HTMLInputElement>(null)
 
+  // Selector de usuario (origen de las canastillas)
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; email: string; first_name: string; last_name: string; department?: string }>>([])
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [userSearch, setUserSearch] = useState('')
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const userDropdownRef = useRef<HTMLDivElement>(null)
+  const userInputRef = useRef<HTMLInputElement>(null)
+
   const [formData, setFormData] = useState({
     sale_point_id: '',
     rental_type: 'EXTERNO' as 'INTERNO' | 'EXTERNO',
@@ -49,16 +58,25 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   })
 
   useEffect(() => {
-    if (isOpen && step === 2) {
+    if (isOpen) {
+      fetchUsuarios()
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (isOpen && step === 2 && selectedUserId) {
       fetchCanastillasYAgrupar()
     }
-  }, [isOpen, step])
+  }, [isOpen, step, selectedUserId])
 
-  // Cerrar dropdown de clientes al hacer clic fuera
+  // Cerrar dropdowns al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
         setClientDropdownOpen(false)
+      }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -66,6 +84,34 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   }, [])
 
   const selectedSalePoint = salePoints.find(sp => sp.id === formData.sale_point_id)
+  const selectedUser = usuarios.find(u => u.id === selectedUserId)
+
+  const filteredUsers = userSearch.trim()
+    ? usuarios.filter(u => {
+        const term = userSearch.toLowerCase()
+        return u.first_name?.toLowerCase().includes(term) ||
+               u.last_name?.toLowerCase().includes(term) ||
+               u.email?.toLowerCase().includes(term) ||
+               u.department?.toLowerCase().includes(term)
+      })
+    : usuarios
+
+  const fetchUsuarios = async () => {
+    setLoadingUsers(true)
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, department')
+        .eq('is_active', true)
+        .order('first_name')
+      if (error) throw error
+      setUsuarios(data || [])
+    } catch (err) {
+      console.error('Error fetching users:', err)
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
 
   const filteredSalePoints = clientSearch.trim()
     ? salePoints.filter(sp => {
@@ -86,13 +132,13 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   }
 
   const fetchCanastillasYAgrupar = async () => {
-    if (!user) return
+    if (!selectedUserId) return
 
     setLoadingLotes(true)
     setError('')
 
     try {
-      // Cargar TODAS las canastillas disponibles usando paginación
+      // Cargar canastillas del usuario seleccionado
       const PAGE_SIZE = 1000
       let allCanastillas: Canastilla[] = []
       let hasMore = true
@@ -101,8 +147,8 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
       while (hasMore) {
         const { data, error } = await supabase
           .from('canastillas')
-          .select('*')
-          .eq('current_owner_id', user.id)
+          .select('id, codigo, size, color, shape, tipo_propiedad, status')
+          .eq('current_owner_id', selectedUserId)
           .eq('status', 'DISPONIBLE')
           .order('color', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
@@ -153,6 +199,10 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
   const handleNextStep = () => {
     if (!formData.sale_point_id) {
       setError('Selecciona un cliente o punto de venta')
+      return
+    }
+    if (!selectedUserId) {
+      setError('Selecciona el usuario del cual se tomarán las canastillas')
       return
     }
     setError('')
@@ -315,6 +365,9 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
     setError('')
     setClientSearch('')
     setClientDropdownOpen(false)
+    setSelectedUserId('')
+    setUserSearch('')
+    setUserDropdownOpen(false)
     onClose()
   }
 
@@ -484,6 +537,82 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Tipo de Alquiler *
                   </label>
+
+                {/* Selector de Usuario (origen de canastillas) */}
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Usuario / Origen de Canastillas *
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Se cargarán las canastillas del inventario de este usuario para crear el alquiler
+                  </p>
+                  {loadingUsers ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                    </div>
+                  ) : (
+                    <div className="relative" ref={userDropdownRef}>
+                      {selectedUser && !userDropdownOpen ? (
+                        <div
+                          onClick={() => { setUserDropdownOpen(true); setTimeout(() => userInputRef.current?.focus(), 50) }}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg cursor-pointer hover:border-primary-400 flex items-center justify-between"
+                        >
+                          <div>
+                            <span className="font-medium text-gray-900">{selectedUser.first_name} {selectedUser.last_name}</span>
+                            <span className="text-gray-500 ml-2 text-sm">- {selectedUser.email}</span>
+                            {selectedUser.department && (
+                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{selectedUser.department}</span>
+                            )}
+                          </div>
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <input
+                            ref={userInputRef}
+                            type="text"
+                            value={userSearch}
+                            onChange={(e) => { setUserSearch(e.target.value); setUserDropdownOpen(true) }}
+                            onFocus={() => setUserDropdownOpen(true)}
+                            placeholder="Buscar usuario por nombre o correo..."
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                      )}
+
+                      {userDropdownOpen && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {filteredUsers.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center">No se encontraron usuarios</div>
+                          ) : (
+                            filteredUsers.map(u => (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserId(u.id)
+                                  setUserDropdownOpen(false)
+                                  setUserSearch('')
+                                }}
+                                className={`w-full text-left px-4 py-2.5 hover:bg-primary-50 transition-colors ${
+                                  selectedUserId === u.id ? 'bg-primary-50 border-l-2 border-primary-500' : ''
+                                }`}
+                              >
+                                <p className="text-sm font-medium text-gray-900">{u.first_name} {u.last_name}</p>
+                                <p className="text-xs text-gray-500">{u.email}{u.department ? ` · ${u.department}` : ''}</p>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                   <select
                     value={formData.rental_type}
                     onChange={(e) => setFormData({ ...formData, rental_type: e.target.value as 'INTERNO' | 'EXTERNO' })}

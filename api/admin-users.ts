@@ -162,6 +162,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ success: true })
       }
 
+      case 'resetPdvUpload': {
+        const { pdvUserId, periodMonth, periodYear } = payload
+        if (!pdvUserId || !periodMonth || !periodYear) {
+          return res.status(400).json({ error: 'pdvUserId, periodMonth y periodYear son requeridos' })
+        }
+
+        // Buscar upload existente
+        const { data: existingUpload } = await supabaseAdmin
+          .from('pdv_inventory_uploads')
+          .select('id')
+          .eq('user_id', pdvUserId)
+          .eq('period_month', periodMonth)
+          .eq('period_year', periodYear)
+          .maybeSingle()
+
+        if (existingUpload) {
+          // Borrar items primero
+          const { error: itemsErr } = await supabaseAdmin
+            .from('pdv_inventory_upload_items')
+            .delete()
+            .eq('upload_id', existingUpload.id)
+          if (itemsErr) throw itemsErr
+
+          // Borrar upload
+          const { error: uploadErr } = await supabaseAdmin
+            .from('pdv_inventory_uploads')
+            .delete()
+            .eq('id', existingUpload.id)
+          if (uploadErr) throw uploadErr
+        }
+
+        return res.status(200).json({ success: true, deleted: !!existingUpload })
+      }
+
       default:
         return res.status(400).json({ error: 'Acción no válida' })
     }

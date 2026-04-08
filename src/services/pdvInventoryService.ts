@@ -9,7 +9,7 @@
  * Tablas involucradas: `pdv_inventory_uploads`, `pdv_inventory_upload_items`, `pdv_upload_extensions`.
  */
 
-import { supabase } from '@/lib/supabase'
+import { supabase, callAdminAPI } from '@/lib/supabase'
 
 // ========== UTILIDADES DE FECHA ==========
 
@@ -402,6 +402,42 @@ export async function grantUploadExtension(
 ): Promise<PdvExtension> {
   const { month, year } = getCurrentPeriod()
 
+  // Borrar el upload existente del período (si hay) usando API admin (bypasea RLS)
+  await callAdminAPI('resetPdvUpload', {
+    pdvUserId,
+    periodMonth: month,
+    periodYear: year,
+  })
+
+  // Verificar si ya existe una extensión para este usuario/período
+  const { data: existing } = await supabase
+    .from('pdv_upload_extensions')
+    .select('id')
+    .eq('pdv_user_id', pdvUserId)
+    .eq('period_month', month)
+    .eq('period_year', year)
+    .maybeSingle()
+
+  if (existing) {
+    // Actualizar la extensión existente: resetear para dar otra oportunidad
+    const { data, error } = await supabase
+      .from('pdv_upload_extensions')
+      .update({
+        granted_by: grantedBy,
+        granted_by_name: grantedByName,
+        reason: reason || null,
+        is_used: false,
+        used_at: null,
+      })
+      .eq('id', existing.id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  // No existe, insertar nueva
   const { data, error } = await supabase
     .from('pdv_upload_extensions')
     .insert({

@@ -300,6 +300,17 @@ export function ControlInventarioPDVPage() {
                                 Sin canastillas
                               </span>
                             )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setExtensionPdv(pdv)
+                                setShowExtensionModal(true)
+                              }}
+                              className="px-3 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800 hover:bg-purple-200 transition"
+                              title="Borrar cargue actual y obligar nuevo cargue"
+                            >
+                              🔄 Obligar recargue
+                            </button>
                           </>
                         ) : (
                           <>
@@ -465,6 +476,11 @@ export function ControlInventarioPDVPage() {
                 Se habilitará una nueva oportunidad de cargue para{' '}
                 <strong>{extensionPdv.first_name} {extensionPdv.last_name}</strong>{' '}
                 en el período <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong>.
+                {uploads.find(u => u.user_id === extensionPdv.id) && (
+                  <span className="block mt-2 text-red-600 font-medium">
+                    ⚠️ El cargue actual será eliminado y el usuario deberá subir nuevamente su inventario.
+                  </span>
+                )}
               </p>
 
               <div className="bg-amber-50 border-l-4 border-amber-500 text-amber-700 px-4 py-3 rounded-r-lg mb-4">

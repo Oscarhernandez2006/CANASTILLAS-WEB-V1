@@ -53,7 +53,7 @@ export function AdicionInventarioPage() {
       setLoadingUsers(true)
       const { data, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, email, first_name, last_name, phone, department, area, role, is_active')
         .eq('is_active', true)
         .order('first_name')
 
@@ -82,7 +82,7 @@ export function AdicionInventarioPage() {
       while (hasMore) {
         const { data, error: errorDisponibles } = await supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, size, color, shape, condition, tipo_propiedad, status')
           .eq('status', 'DISPONIBLE')
           .eq('current_owner_id', currentUser.id)
           .order('color', { ascending: true })

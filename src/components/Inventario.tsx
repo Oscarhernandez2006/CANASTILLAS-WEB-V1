@@ -16,6 +16,32 @@ interface LoteItem {
   canastillas: string[]
 }
 
+const UBICACIONES_CONSULTOR_PROCESO = [
+  'DESPACHO BOVINO', 'DESPACHO PORCINO', 'TAT CONTAINER',
+  'DESPOSTE PORCINO', 'SACRIFICIO PORCINO', 'SACRIFICIO BOVINO',
+  'DESPOSTE BOVINO', 'SUBPRODUCTO BOVINO', 'SUBPRODUCTO PORCINO',
+]
+
+interface ConsultorUsuario {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+  department: string
+  totalCanastillas: number
+}
+
+interface ConsultorLote {
+  key: string
+  size: string
+  color: string
+  shape: string
+  condition: string
+  tipo_propiedad: string
+  status: string
+  cantidad: number
+}
+
 export function Inventario() {
   const [lotes, setLotes] = useState<LoteItem[]>([])
   const [lotesPaginados, setLotesPaginados] = useState<LoteItem[]>([])
@@ -35,10 +61,23 @@ export function Inventario() {
 
   // Verificar si el usuario es super_admin
   const isSuperAdmin = user?.role === 'super_admin'
+  const isConsultorProceso = user?.role === 'consultor_proceso'
+
+  // Estados para consultor_proceso
+  const [consultorUsuarios, setConsultorUsuarios] = useState<ConsultorUsuario[]>([])
+  const [consultorSelectedUser, setConsultorSelectedUser] = useState<ConsultorUsuario | null>(null)
+  const [consultorLotes, setConsultorLotes] = useState<ConsultorLote[]>([])
+  const [consultorLoadingLotes, setConsultorLoadingLotes] = useState(false)
+  const [consultorTraspasos, setConsultorTraspasos] = useState<any[]>([])
+  const [consultorVistaActiva, setConsultorVistaActiva] = useState<'canastillas' | 'traspasos'>('canastillas')
 
   useEffect(() => {
     if (user) {
-      cargarInventario()
+      if (isConsultorProceso) {
+        cargarUsuariosConsultor()
+      } else {
+        cargarInventario()
+      }
     }
   }, [user])
 
@@ -47,6 +86,158 @@ export function Inventario() {
     const endIndex = startIndex + itemsPerPage
     setLotesPaginados(lotes.slice(startIndex, endIndex))
   }, [lotes, currentPage])
+
+  const cargarUsuariosConsultor = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Cargar usuarios cuyo department coincida con las ubicaciones permitidas
+      const { data: usersData, error: usersErr } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email, department')
+        .eq('is_active', true)
+        .in('department', UBICACIONES_CONSULTOR_PROCESO)
+        .order('department')
+
+      if (usersErr) throw usersErr
+
+      // Para cada usuario, contar sus canastillas
+      const usersWithCounts: ConsultorUsuario[] = await Promise.all(
+        (usersData || []).map(async (u) => {
+          const { count } = await supabase
+            .from('canastillas')
+            .select('*', { count: 'exact', head: true })
+            .eq('current_owner_id', u.id)
+          return {
+            id: u.id,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            email: u.email,
+            department: u.department || '',
+            totalCanastillas: count || 0,
+          }
+        })
+      )
+
+      setConsultorUsuarios(usersWithCounts)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar usuarios')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const cargarLotesUsuarioConsultor = async (userId: string) => {
+    setConsultorLoadingLotes(true)
+    setConsultorLotes([])
+
+    try {
+      const PAGE_SIZE = 1000
+      let allCanastillas: any[] = []
+      let hasMore = true
+      let offset = 0
+
+      while (hasMore) {
+        const { data, error: err } = await supabase
+          .from('canastillas')
+          .select('size, color, shape, status, condition, tipo_propiedad')
+          .eq('current_owner_id', userId)
+          .range(offset, offset + PAGE_SIZE - 1)
+
+        if (err) throw err
+        if (data && data.length > 0) {
+          allCanastillas = [...allCanastillas, ...data]
+          offset += PAGE_SIZE
+          hasMore = data.length === PAGE_SIZE
+        } else {
+          hasMore = false
+        }
+      }
+
+      // Agrupar por lote
+      const grouped: Record<string, ConsultorLote> = {}
+      for (const c of allCanastillas) {
+        const key = `${c.size}-${c.color}-${c.shape || 'N/A'}-${c.condition || 'N/A'}-${c.tipo_propiedad || 'PROPIA'}-${c.status}`
+        if (!grouped[key]) {
+          grouped[key] = {
+            key,
+            size: c.size,
+            color: c.color,
+            shape: c.shape || 'N/A',
+            condition: c.condition || 'N/A',
+            tipo_propiedad: c.tipo_propiedad || 'PROPIA',
+            status: c.status,
+            cantidad: 0,
+          }
+        }
+        grouped[key].cantidad++
+      }
+
+      const sorted = Object.values(grouped).sort((a, b) => {
+        if (a.status !== b.status) return a.status.localeCompare(b.status)
+        if (a.size !== b.size) return a.size.localeCompare(b.size)
+        return a.color.localeCompare(b.color)
+      })
+
+      setConsultorLotes(sorted)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar lotes')
+    } finally {
+      setConsultorLoadingLotes(false)
+    }
+  }
+
+  const cargarTraspasosUsuarioConsultor = async (userId: string) => {
+    setConsultorLoadingLotes(true)
+    setConsultorTraspasos([])
+    try {
+      // Traspasos donde el usuario es remitente o destinatario
+      const { data: enviados, error: errEnv } = await supabase
+        .from('transfers')
+        .select(`
+          id, status, requested_at, responded_at, remision_number,
+          items_count:transfer_items(count),
+          from_user:from_user_id(first_name, last_name),
+          to_user:to_user_id(first_name, last_name)
+        `)
+        .eq('from_user_id', userId)
+        .in('status', ['PENDIENTE', 'ACEPTADO', 'RECHAZADO'])
+        .order('requested_at', { ascending: false })
+        .limit(50)
+
+      if (errEnv) console.error('Error fetching enviados:', errEnv)
+
+      const { data: recibidos, error: errRec } = await supabase
+        .from('transfers')
+        .select(`
+          id, status, requested_at, responded_at, remision_number,
+          items_count:transfer_items(count),
+          from_user:from_user_id(first_name, last_name),
+          to_user:to_user_id(first_name, last_name)
+        `)
+        .eq('to_user_id', userId)
+        .in('status', ['PENDIENTE', 'ACEPTADO', 'RECHAZADO'])
+        .order('requested_at', { ascending: false })
+        .limit(50)
+
+      if (errRec) console.error('Error fetching recibidos:', errRec)
+
+      const all = [
+        ...(enviados || []).map((t: any) => ({ ...t, direccion: 'ENVIADO' })),
+        ...(recibidos || []).map((t: any) => ({ ...t, direccion: 'RECIBIDO' })),
+      ]
+      // Eliminar duplicados (si envió a sí mismo) y ordenar por fecha
+      const unique = Array.from(new Map(all.map(t => [`${t.id}-${t.direccion}`, t])).values())
+      unique.sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime())
+
+      setConsultorTraspasos(unique)
+    } catch (err) {
+      console.error('Error al cargar traspasos:', err)
+    } finally {
+      setConsultorLoadingLotes(false)
+    }
+  }
 
   const cargarInventario = async () => {
     try {
@@ -101,7 +292,7 @@ export function Inventario() {
       while (hasMore) {
         let canastillasQuery = supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, status, color, size, shape, condition, tipo_propiedad, current_owner_id')
 
         // Si NO es super_admin, filtrar solo las canastillas del usuario actual
         if (!isSuperAdmin) {
@@ -348,6 +539,307 @@ export function Inventario() {
 
   if (loading) return <LoadingSpinner />
 
+  // ========== VISTA CONSULTOR PROCESO ==========
+  if (isConsultorProceso) {
+    const STATUS_LABELS: Record<string, string> = {
+      DISPONIBLE: '✅ Disponible', EN_ALQUILER: '🔄 En Alquiler', EN_LAVADO: '🧼 En Lavado',
+      EN_USO_INTERNO: '🏢 Uso Interno', EN_REPARACION: '🔧 Reparación', EN_RETORNO: '🚛 En Retorno',
+      FUERA_SERVICIO: '⛔ Fuera Servicio', EXTRAVIADA: '❓ Extraviada', DADA_DE_BAJA: '🗑️ Baja',
+    }
+    const STATUS_COLORS: Record<string, string> = {
+      DISPONIBLE: 'bg-green-100 text-green-800', EN_ALQUILER: 'bg-purple-100 text-purple-800',
+      EN_LAVADO: 'bg-cyan-100 text-cyan-800', EN_USO_INTERNO: 'bg-yellow-100 text-yellow-800',
+      EN_REPARACION: 'bg-orange-100 text-orange-800', EN_RETORNO: 'bg-amber-100 text-amber-800',
+      FUERA_SERVICIO: 'bg-red-100 text-red-800', EXTRAVIADA: 'bg-gray-100 text-gray-800',
+    }
+
+    const totalGeneral = consultorUsuarios.reduce((sum, u) => sum + u.totalCanastillas, 0)
+
+    // Agrupar usuarios por ubicación
+    const porUbicacion: Record<string, ConsultorUsuario[]> = {}
+    for (const u of consultorUsuarios) {
+      if (!porUbicacion[u.department]) porUbicacion[u.department] = []
+      porUbicacion[u.department].push(u)
+    }
+
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="mb-4 sm:mb-8">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Inventario por Ubicación</h1>
+          <p className="text-gray-500 mt-1 sm:mt-2 text-sm sm:text-base">
+            Consulta el inventario de usuarios en las ubicaciones de proceso
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+        )}
+
+        {/* Resumen */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="p-4 rounded-lg border bg-blue-50 border-blue-200 shadow-sm">
+            <p className="text-gray-600 text-xs sm:text-sm font-medium">Usuarios</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{consultorUsuarios.length}</p>
+          </div>
+          <div className="p-4 rounded-lg border bg-green-50 border-green-200 shadow-sm">
+            <p className="text-gray-600 text-xs sm:text-sm font-medium">Total Canastillas</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">{totalGeneral}</p>
+          </div>
+          <div className="p-4 rounded-lg border bg-purple-50 border-purple-200 shadow-sm">
+            <p className="text-gray-600 text-xs sm:text-sm font-medium">Ubicaciones</p>
+            <p className="text-2xl font-bold text-purple-600 mt-1">{Object.keys(porUbicacion).length}</p>
+          </div>
+        </div>
+
+        {/* Lista de usuarios por ubicación */}
+        {consultorUsuarios.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+            <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p className="text-gray-500 font-medium">No se encontraron usuarios en las ubicaciones de proceso</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(porUbicacion).sort((a, b) => a[0].localeCompare(b[0])).map(([ubicacion, usuarios]) => (
+              <div key={ubicacion} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-4 sm:px-6 py-3 bg-gray-50 border-b border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <span>📍</span> {ubicacion}
+                    <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {usuarios.length} usuario{usuarios.length !== 1 ? 's' : ''}
+                    </span>
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {usuarios.reduce((s, u) => s + u.totalCanastillas, 0)} canastillas
+                    </span>
+                  </h3>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {usuarios.map((u) => (
+                    <div key={u.id}>
+                      <button
+                        onClick={() => {
+                          if (consultorSelectedUser?.id === u.id) {
+                            setConsultorSelectedUser(null)
+                            setConsultorLotes([])
+                            setConsultorTraspasos([])
+                          } else {
+                            setConsultorSelectedUser(u)
+                            setConsultorVistaActiva('canastillas')
+                            cargarLotesUsuarioConsultor(u.id)
+                          }
+                        }}
+                        className="w-full px-4 sm:px-6 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {u.first_name?.[0]}{u.last_name?.[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{u.first_name} {u.last_name}</p>
+                            <p className="text-xs text-gray-500">{u.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-sm font-bold">
+                            {u.totalCanastillas}
+                          </span>
+                          <svg
+                            className={`w-5 h-5 text-gray-400 transition-transform ${consultorSelectedUser?.id === u.id ? 'rotate-180' : ''}`}
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </button>
+
+                      {/* Contenido del usuario seleccionado */}
+                      {consultorSelectedUser?.id === u.id && (
+                        <div className="border-t border-gray-200 bg-gray-50 px-4 sm:px-6 py-4">
+                          {/* Tabs: Canastillas / Traspasos */}
+                          <div className="flex gap-2 mb-4">
+                            <button
+                              onClick={() => {
+                                setConsultorVistaActiva('canastillas')
+                                if (consultorLotes.length === 0) cargarLotesUsuarioConsultor(u.id)
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                consultorVistaActiva === 'canastillas'
+                                  ? 'bg-primary-600 text-white'
+                                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
+                              }`}
+                            >
+                              📦 Canastillas
+                            </button>
+                            <button
+                              onClick={() => {
+                                setConsultorVistaActiva('traspasos')
+                                if (consultorTraspasos.length === 0) cargarTraspasosUsuarioConsultor(u.id)
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                consultorVistaActiva === 'traspasos'
+                                  ? 'bg-primary-600 text-white'
+                                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
+                              }`}
+                            >
+                              🔄 Traspasos
+                            </button>
+                          </div>
+
+                          {/* Vista Canastillas */}
+                          {consultorVistaActiva === 'canastillas' && (
+                            <>
+                          {consultorLoadingLotes ? (
+                            <div className="flex items-center justify-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                            </div>
+                          ) : consultorLotes.length === 0 ? (
+                            <p className="text-center text-sm text-gray-500 py-4">Sin canastillas</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                                    <th className="pb-2 pr-4">Estado</th>
+                                    <th className="pb-2 pr-4">Color</th>
+                                    <th className="pb-2 pr-4">Tamaño</th>
+                                    <th className="pb-2 pr-4">Forma</th>
+                                    <th className="pb-2 pr-4">Tipo</th>
+                                    <th className="pb-2 text-center">Cantidad</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {consultorLotes.map((lote) => (
+                                    <tr key={lote.key} className="hover:bg-white transition-colors">
+                                      <td className="py-2 pr-4">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[lote.status] || 'bg-gray-100 text-gray-800'}`}>
+                                          {STATUS_LABELS[lote.status] || lote.status}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 pr-4">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-3 h-3 rounded-full border border-gray-300" style={{ backgroundColor: lote.color.toLowerCase().replace(/ /g, '') }} />
+                                          <span className="text-gray-900">{lote.color}</span>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 pr-4 text-gray-700">{lote.size}</td>
+                                      <td className="py-2 pr-4 text-gray-700">{lote.shape}</td>
+                                      <td className="py-2 pr-4">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lote.tipo_propiedad === 'PROPIA' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                                          {lote.tipo_propiedad === 'PROPIA' ? '🏢 Propia' : '🔄 Alquilada'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 text-center">
+                                        <span className="bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-sm font-bold">
+                                          {lote.cantidad}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t border-gray-300 font-semibold">
+                                    <td colSpan={5} className="py-2 pr-4 text-gray-900">Total</td>
+                                    <td className="py-2 text-center">
+                                      <span className="bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-sm font-bold">
+                                        {consultorLotes.reduce((s, l) => s + l.cantidad, 0)}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+                            </>
+                          )}
+
+                          {/* Vista Traspasos */}
+                          {consultorVistaActiva === 'traspasos' && (
+                            <>
+                              {consultorLoadingLotes ? (
+                                <div className="flex items-center justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                                </div>
+                              ) : consultorTraspasos.length === 0 ? (
+                                <p className="text-center text-sm text-gray-500 py-4">Sin traspasos registrados</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                                        <th className="pb-2 pr-4">Dirección</th>
+                                        <th className="pb-2 pr-4">De / Para</th>
+                                        <th className="pb-2 pr-4">Canastillas</th>
+                                        <th className="pb-2 pr-4">Fecha</th>
+                                        <th className="pb-2 pr-4">Estado</th>
+                                        <th className="pb-2 pr-4">Remisión</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {consultorTraspasos.map((t: any) => {
+                                        const statusColors: Record<string, string> = {
+                                          PENDIENTE: 'bg-yellow-100 text-yellow-800',
+                                          ACEPTADO: 'bg-green-100 text-green-800',
+                                          RECHAZADO: 'bg-red-100 text-red-800',
+                                        }
+                                        const count = Array.isArray(t.items_count) ? t.items_count[0]?.count || 0 : t.items_count || 0
+                                        const otherUser = t.direccion === 'ENVIADO'
+                                          ? t.to_user
+                                          : t.from_user
+                                        return (
+                                          <tr key={`${t.id}-${t.direccion}`} className="hover:bg-white transition-colors">
+                                            <td className="py-2 pr-4">
+                                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                                t.direccion === 'ENVIADO' ? 'bg-blue-100 text-blue-800' : 'bg-indigo-100 text-indigo-800'
+                                              }`}>
+                                                {t.direccion === 'ENVIADO' ? '📤 Enviado' : '📥 Recibido'}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 pr-4 text-gray-900">
+                                              {otherUser ? `${otherUser.first_name} ${otherUser.last_name}` : '—'}
+                                            </td>
+                                            <td className="py-2 pr-4 text-center">
+                                              <span className="bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                {count}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 pr-4 text-gray-700 text-xs">
+                                              {new Date(t.requested_at).toLocaleString('es-CO', {
+                                                day: '2-digit', month: 'short', year: 'numeric',
+                                                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                                              })}
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[t.status] || 'bg-gray-100 text-gray-800'}`}>
+                                                {t.status}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 pr-4 text-xs text-purple-600 font-medium">
+                                              {t.remision_number || '—'}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ========== VISTA NORMAL ==========
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header */}

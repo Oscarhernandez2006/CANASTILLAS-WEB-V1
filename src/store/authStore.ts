@@ -128,18 +128,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     try {
-      // Registrar logout en auditoría antes de cerrar sesión
+      // Registrar logout en auditoría antes de cerrar sesión (no bloquear si falla)
       const currentUser = get().user
       if (currentUser) {
-        await logAuditEvent({
-          userId: currentUser.id,
-          userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
-          userRole: currentUser.role,
-          action: 'LOGOUT',
-          module: 'auth',
-          description: `Cierre de sesión: ${currentUser.email}`,
-          details: { email: currentUser.email },
-        })
+        try {
+          await logAuditEvent({
+            userId: currentUser.id,
+            userName: `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim(),
+            userRole: currentUser.role,
+            action: 'LOGOUT',
+            module: 'auth',
+            description: `Cierre de sesión: ${currentUser.email}`,
+            details: { email: currentUser.email },
+          })
+        } catch (auditErr) {
+          console.warn('No se pudo registrar logout en auditoría:', auditErr)
+        }
       }
       const { error } = await supabase.auth.signOut()
       if (error) throw error
@@ -149,7 +153,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, session: null })
     } catch (error: any) {
       console.error('Error signing out:', error)
-      throw error
+      // Forzar limpieza local aunque falle supabase
+      localStorage.removeItem('rememberMe')
+      sessionStorage.removeItem('tempSession')
+      set({ user: null, session: null })
     }
   },
 

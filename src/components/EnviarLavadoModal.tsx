@@ -109,7 +109,7 @@ export function EnviarLavadoModal({
       while (hasMore) {
         const { data, error: errorDisponibles } = await supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, size, color, shape, condition, tipo_propiedad, status')
           .eq('current_owner_id', currentUser.id)
           .eq('status', 'DISPONIBLE')
           .order('codigo')

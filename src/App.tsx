@@ -33,6 +33,8 @@ import { AuditoriaPage } from './pages/AuditoriaPage'
 import { RutasPage } from './pages/RutasPage'
 import { MiRutaPage } from './pages/MiRutaPage'
 import { AdicionInventarioPage } from './pages/AdicionInventarioPage'
+import { ConsultarInventarioUsuarioPage } from './pages/ConsultarInventarioUsuarioPage'
+import { HistorialTraspasosPage } from './pages/HistorialTraspasosPage'
 import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
@@ -277,6 +279,24 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <AdicionInventarioPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/consultar-inventario-usuario"
+          element={
+            <ProtectedRoute>
+              <ConsultarInventarioUsuarioPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/historial-traspasos"
+          element={
+            <ProtectedRoute>
+              <HistorialTraspasosPage />
             </ProtectedRoute>
           }
         />

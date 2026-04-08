@@ -25,6 +25,7 @@ const ROLES = [
   { value: 'operator', label: 'Operador', description: 'Solo lectura' },
   { value: 'washing_staff', label: 'Personal de Lavado', description: 'Gestión de lavado de canastillas' },
   { value: 'client', label: 'Cliente', description: 'Acceso limitado' },
+  { value: 'consultor_proceso', label: 'Consultor Proceso', description: 'Dashboard con ubicaciones de proceso' },
 ]
 
 export function CrearUsuarioModal({ isOpen, onClose, onSuccess }: CrearUsuarioModalProps) {

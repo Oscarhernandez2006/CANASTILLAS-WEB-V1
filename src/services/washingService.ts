@@ -476,7 +476,7 @@ export const getAvailableCanastillasForWashing = async (ownerId: string) => {
   while (hasMore) {
     const { data, error } = await supabase
       .from('canastillas')
-      .select('*')
+      .select('id, codigo, size, color, shape, condition, tipo_propiedad, status')
       .eq('current_owner_id', ownerId)
       .eq('status', 'DISPONIBLE')
       .order('codigo', { ascending: true })

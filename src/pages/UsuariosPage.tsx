@@ -24,6 +24,7 @@ const ROLE_LABELS: { [key: string]: string } = {
   operator: 'Operador',
   washing_staff: 'Personal de Lavado',
   client: 'Cliente',
+  consultor_proceso: 'Consultor Proceso',
 }
 
 const ROLE_COLORS: { [key: string]: string } = {
@@ -36,6 +37,7 @@ const ROLE_COLORS: { [key: string]: string } = {
   operator: 'bg-gray-100 text-gray-800',
   washing_staff: 'bg-cyan-100 text-cyan-800',
   client: 'bg-pink-100 text-pink-800',
+  consultor_proceso: 'bg-teal-100 text-teal-800',
 }
 
 export function UsuariosPage() {

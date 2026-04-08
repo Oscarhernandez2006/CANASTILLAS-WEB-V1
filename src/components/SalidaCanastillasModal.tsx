@@ -57,13 +57,19 @@ export function SalidaCanastillasModal({
       let offset = 0
 
       while (hasMore) {
-        const { data, error: canErr } = await supabase
+        let query = supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, size, color, shape, condition, tipo_propiedad, status, current_owner_id')
           .eq('tipo_propiedad', tipoPropiedad)
           .eq('status', 'DISPONIBLE')
           .order('color', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
+
+        if (user?.id) {
+          query = query.eq('current_owner_id', user.id)
+        }
+
+        const { data, error: canErr } = await query
 
         if (canErr) throw canErr
 

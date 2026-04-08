@@ -69,6 +69,11 @@ export function usePermissions() {
     // Si no hay usuario, no tiene permisos
     if (!user) return false
 
+    // Consultor proceso: acceso automático a dashboard e inventario
+    if (user.role === 'consultor_proceso') {
+      if (permissionKey === 'dashboard.ver' || permissionKey === 'inventario.ver') return true
+    }
+
     // Buscar el permiso específico
     const perm = permissions.find(p => p.permission_key === permissionKey)
     return perm?.is_granted ?? false

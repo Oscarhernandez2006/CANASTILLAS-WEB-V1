@@ -2,16 +2,17 @@
  * @module TraspasosPage
  * @description Módulo de traspasos: solicitar, aceptar/rechazar, historial, firma digital.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
 import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { SolicitarTraspasoModal } from '@/components/SolicitarTraspasoModal'
 import { DevolucionTraspasoModal } from '@/components/DevolucionTraspasoModal'
+import { AsignarRecogidaModal } from '@/components/AsignarRecogidaModal'
 import { useTraspasos } from '@/hooks/useTraspasos'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
-import { formatDate } from '@/utils/helpers'
+import { formatDateTime } from '@/utils/helpers'
 import { openRemisionTraspasoPDF, getRemisionTraspasoPDFBlob } from '@/utils/remisionTraspasoGenerator'
 import { uploadSignedPDF } from '@/services/storageService'
 import { logAuditEvent } from '@/services/auditService'
@@ -27,7 +28,35 @@ export function TraspasosPage() {
   const [firmaLoading, setFirmaLoading] = useState(false)
   const [showDevolucionModal, setShowDevolucionModal] = useState(false)
   const [selectedTransferForReturn, setSelectedTransferForReturn] = useState<Transfer | null>(null)
+  const [showAsignarRecogidaModal, setShowAsignarRecogidaModal] = useState(false)
+  const [selectedTransferForPickup, setSelectedTransferForPickup] = useState<Transfer | null>(null)
   const [processingMessage, setProcessingMessage] = useState<string | null>(null)
+  const [showMotivoModal, setShowMotivoModal] = useState(false)
+  const [motivoAccion, setMotivoAccion] = useState<'rechazar' | 'cancelar'>('rechazar')
+  const [motivoTransferId, setMotivoTransferId] = useState<string>('')
+  const [motivoSeleccionado, setMotivoSeleccionado] = useState<string>('')
+
+  const MOTIVOS_RECHAZO = [
+    'Usuario seleccionado incorrecto',
+    'Cantidad de canastillas incorrecta',
+    'Error en la digitación de datos',
+    'Canastillas no corresponden al envío',
+    'Duplicado de solicitud',
+    'Solicitud no autorizada',
+    'Cambio de destino requerido',
+    'Canastillas en mal estado',
+  ]
+
+  const MOTIVOS_CANCELACION = [
+    'Error al seleccionar el destinatario',
+    'Cantidad de canastillas incorrecta',
+    'Error en la digitación de datos',
+    'Duplicado de solicitud',
+    'Ya no se requiere el traspaso',
+    'Cambio de destino requerido',
+    'Canastillas no disponibles',
+    'Solicitud creada por error',
+  ]
 
   const { user } = useAuthStore()
   const {
@@ -35,9 +64,19 @@ export function TraspasosPage() {
     solicitudesEnviadas,
     historial,
     devolucionesExternas,
+    pickupsPendientes,
     loading,
     refreshTraspasos
   } = useTraspasos()
+
+  // Si el usuario no es super_admin ni conductor, resetear tab si quedó en devoluciones-externas
+  useEffect(() => {
+    if (activeTab === 'devoluciones-externas' && user?.role !== 'super_admin' && user?.role !== 'conductor') {
+      setActiveTab('solicitudes-recibidas')
+    }
+  }, [activeTab, user?.role])
+
+  const showFourthTab = user?.role === 'super_admin' || user?.role === 'conductor'
 
   const handleFirmarYAceptar = async (id: string) => {
     setProcessingMessage('Cargando datos del traspaso...')
@@ -344,22 +383,139 @@ export function TraspasosPage() {
   }
 
   const handleRechazar = async (id: string) => {
-    if (!confirm('¿Rechazar este traspaso?')) return
+    setMotivoAccion('rechazar')
+    setMotivoTransferId(id)
+    setMotivoSeleccionado('')
+    setShowMotivoModal(true)
+  }
+
+  const handleCompletarRecogida = async (pickup: any) => {
+    if (!confirm(`¿Confirmar que recogiste las ${pickup.items_count} canastilla(s) del cliente ${pickup.transfer?.external_recipient_name || 'externo'}?`)) return
+
+    setProcessingMessage('Procesando recogida...')
+    try {
+      // Obtener items del pickup
+      const { data: pickupItems, error: itemsErr } = await supabase
+        .from('pickup_assignment_items')
+        .select('canastilla_id, transfer_item_id')
+        .eq('pickup_assignment_id', pickup.id)
+
+      if (itemsErr) throw itemsErr
+      if (!pickupItems || pickupItems.length === 0) throw new Error('No se encontraron canastillas')
+
+      const canastillaIds = pickupItems.map((i: any) => i.canastilla_id)
+
+      // Crear transfer_return para trazabilidad
+      const { data: returnRecord, error: returnErr } = await supabase
+        .from('transfer_returns')
+        .insert({
+          transfer_id: pickup.transfer_id,
+          processed_by: user!.id,
+          notes: `Recogida completada por conductor. Pickup #${pickup.id.slice(0, 8)}`
+        })
+        .select()
+        .single()
+
+      if (returnErr) throw returnErr
+
+      // Crear transfer_return_items
+      const returnItems = canastillaIds.map((cId: string) => ({
+        transfer_return_id: returnRecord.id,
+        canastilla_id: cId
+      }))
+
+      const BATCH = 500
+      for (let i = 0; i < returnItems.length; i += BATCH) {
+        const { error: riErr } = await supabase.from('transfer_return_items').insert(returnItems.slice(i, i + BATCH))
+        if (riErr) throw riErr
+      }
+
+      // Actualizar canastillas: owner = conductor, status = DISPONIBLE
+      for (let i = 0; i < canastillaIds.length; i += BATCH) {
+        const batch = canastillaIds.slice(i, i + BATCH)
+        const { error: updateErr } = await supabase
+          .from('canastillas')
+          .update({ current_owner_id: user!.id, status: 'DISPONIBLE' })
+          .in('id', batch)
+        if (updateErr) throw updateErr
+      }
+
+      // Actualizar contadores del transfer
+      const { data: transferData } = await supabase
+        .from('transfers')
+        .select('returned_items_count, pending_items_count')
+        .eq('id', pickup.transfer_id)
+        .single()
+
+      const currentReturned = transferData?.returned_items_count || 0
+      const newReturned = currentReturned + canastillaIds.length
+      const currentPending = transferData?.pending_items_count ?? 0
+      const newPending = Math.max(0, currentPending - canastillaIds.length)
+
+      await supabase
+        .from('transfers')
+        .update({
+          returned_items_count: newReturned,
+          pending_items_count: newPending
+        })
+        .eq('id', pickup.transfer_id)
+
+      // Marcar pickup como completada
+      await supabase
+        .from('pickup_assignments')
+        .update({ status: 'COMPLETADA', completed_at: new Date().toISOString() })
+        .eq('id', pickup.id)
+
+      // Notificar al super_admin que asignó
+      await supabase.from('notifications').insert([{
+        user_id: pickup.assigned_by,
+        type: 'RECOGIDA_COMPLETADA',
+        title: 'Recogida completada',
+        message: `${user?.first_name} ${user?.last_name} completó la recogida de ${canastillaIds.length} canastilla(s) del cliente ${pickup.transfer?.external_recipient_name || 'externo'}.`,
+        related_id: pickup.id,
+      }])
+
+      await logAuditEvent({
+        userId: user!.id,
+        userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        userRole: user?.role,
+        action: 'UPDATE',
+        module: 'recogidas',
+        description: `Recogida completada. ${canastillaIds.length} canastilla(s) del cliente ${pickup.transfer?.external_recipient_name || 'externo'}.`,
+        details: { pickup_id: pickup.id, transfer_id: pickup.transfer_id, cantidad: canastillaIds.length },
+      })
+
+      alert(`✅ Recogida completada. ${canastillaIds.length} canastillas agregadas a tu inventario.`)
+      refreshTraspasos()
+    } catch (err: any) {
+      alert('❌ Error: ' + err.message)
+    } finally {
+      setProcessingMessage(null)
+    }
+  }
+
+  const handleConfirmarRechazo = async () => {
+    if (!motivoSeleccionado) {
+      alert('Debes seleccionar un motivo')
+      return
+    }
+    setShowMotivoModal(false)
+    const id = motivoTransferId
+    const motivo = motivoSeleccionado
     setProcessingMessage('Rechazando traspaso...')
 
     try {
-      // Obtener datos del transfer antes de actualizar
       const { data: transferData } = await supabase
         .from('transfers')
         .select('from_user_id, items_count, remision_number, is_washing_transfer')
         .eq('id', id)
         .single()
 
-      // Verificar que el traspaso siga en PENDIENTE (protección contra race condition)
       const { data: updateResult, error } = await supabase
         .from('transfers')
         .update({ 
           status: 'RECHAZADO',
+          rejection_reason: motivo,
           responded_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -374,7 +530,6 @@ export function TraspasosPage() {
         return
       }
 
-      // Notificar al remitente que su traspaso fue rechazado
       if (transferData) {
         const receiverName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
         await supabase
@@ -383,7 +538,7 @@ export function TraspasosPage() {
             user_id: transferData.from_user_id,
             type: 'TRASPASO_RECHAZADO',
             title: 'Traspaso rechazado',
-            message: `${receiverName} ha rechazado tu solicitud de traspaso${transferData.remision_number ? '. Remisión: ' + transferData.remision_number : ''}.`,
+            message: `${receiverName} ha rechazado tu solicitud de traspaso${transferData.remision_number ? '. Remisión: ' + transferData.remision_number : ''}. Motivo: ${motivo}`,
             related_id: id
           }])
       }
@@ -396,8 +551,8 @@ export function TraspasosPage() {
         userRole: user?.role,
         action: 'UPDATE',
         module: 'traspasos',
-        description: `Traspaso rechazado. Remisión: ${transferData?.remision_number || 'N/A'}`,
-        details: { transfer_id: id, remision: transferData?.remision_number },
+        description: `Traspaso rechazado. Remisión: ${transferData?.remision_number || 'N/A'}. Motivo: ${motivo}`,
+        details: { transfer_id: id, remision: transferData?.remision_number, motivo },
       })
 
       refreshTraspasos()
@@ -409,22 +564,34 @@ export function TraspasosPage() {
   }
 
   const handleCancelar = async (id: string) => {
-    if (!confirm('¿Cancelar esta solicitud de traspaso?')) return
+    setMotivoAccion('cancelar')
+    setMotivoTransferId(id)
+    setMotivoSeleccionado('')
+    setShowMotivoModal(true)
+  }
+
+  const handleConfirmarCancelacion = async () => {
+    if (!motivoSeleccionado) {
+      alert('Debes seleccionar un motivo')
+      return
+    }
+    setShowMotivoModal(false)
+    const id = motivoTransferId
+    const motivo = motivoSeleccionado
     setProcessingMessage('Cancelando solicitud...')
 
     try {
-      // Obtener datos del transfer antes de actualizar
       const { data: transferData } = await supabase
         .from('transfers')
         .select('to_user_id, items_count, remision_number')
         .eq('id', id)
         .single()
 
-      // Cambiar el estado a CANCELADO solo si sigue en PENDIENTE (protección contra race condition)
       const { data: updateResult, error } = await supabase
         .from('transfers')
         .update({
           status: 'CANCELADO',
+          rejection_reason: motivo,
           responded_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -439,10 +606,6 @@ export function TraspasosPage() {
         return
       }
 
-      // Nota: Las canastillas NO necesitan devolverse porque nunca cambiaron de dueño
-      // El cambio de current_owner_id solo ocurre cuando se APRUEBA el traspaso
-
-      // Notificar al destinatario que la solicitud fue cancelada
       if (transferData) {
         const senderName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
         await supabase
@@ -451,7 +614,7 @@ export function TraspasosPage() {
             user_id: transferData.to_user_id,
             type: 'TRASPASO_CANCELADO',
             title: 'Traspaso cancelado',
-            message: `${senderName} ha cancelado su solicitud de traspaso${transferData.remision_number ? '. Remisión: ' + transferData.remision_number : ''}.`,
+            message: `${senderName} ha cancelado su solicitud de traspaso${transferData.remision_number ? '. Remisión: ' + transferData.remision_number : ''}. Motivo: ${motivo}`,
             related_id: id
           }])
       }
@@ -464,8 +627,8 @@ export function TraspasosPage() {
         userRole: user?.role,
         action: 'UPDATE',
         module: 'traspasos',
-        description: `Traspaso cancelado. Remisión: ${transferData?.remision_number || 'N/A'}`,
-        details: { transfer_id: id, remision: transferData?.remision_number },
+        description: `Traspaso cancelado. Remisión: ${transferData?.remision_number || 'N/A'}. Motivo: ${motivo}`,
+        details: { transfer_id: id, remision: transferData?.remision_number, motivo },
       })
 
       refreshTraspasos()
@@ -551,7 +714,7 @@ export function TraspasosPage() {
 
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2">
+          <div className={`grid grid-cols-2 ${showFourthTab ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-1 sm:gap-2`}>
             <button
               onClick={() => setActiveTab('solicitudes-recibidas')}
               className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
@@ -587,21 +750,40 @@ export function TraspasosPage() {
             >
               <span className="hidden sm:inline">📋 </span>Historial
             </button>
-            <button
-              onClick={() => setActiveTab('devoluciones-externas')}
-              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
-                activeTab === 'devoluciones-externas'
-                  ? 'bg-orange-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span className="hidden sm:inline">🔄 </span>Devoluciones
-              {(devolucionesExternas || []).length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
-                  {devolucionesExternas.length}
-                </span>
-              )}
-            </button>
+            {user?.role === 'super_admin' && (
+              <button
+                onClick={() => setActiveTab('devoluciones-externas')}
+                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
+                  activeTab === 'devoluciones-externas'
+                    ? 'bg-orange-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <span className="hidden sm:inline">🔄 </span>Devoluciones
+                {(devolucionesExternas || []).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
+                    {devolucionesExternas.length}
+                  </span>
+                )}
+              </button>
+            )}
+            {user?.role === 'conductor' && (
+              <button
+                onClick={() => setActiveTab('devoluciones-externas')}
+                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
+                  activeTab === 'devoluciones-externas'
+                    ? 'bg-orange-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <span className="hidden sm:inline">📦 </span>Recogidas
+                {(pickupsPendientes || []).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
+                    {pickupsPendientes.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -662,7 +844,7 @@ export function TraspasosPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-gray-900">
-                            {formatDate(solicitud.requested_at)}
+                            {formatDateTime(solicitud.requested_at)}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -770,7 +952,7 @@ export function TraspasosPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-gray-900">
-                            {formatDate(solicitud.requested_at)}
+                            {formatDateTime(solicitud.requested_at)}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -875,7 +1057,7 @@ export function TraspasosPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-gray-900">
-                            {formatDate(item.responded_at || item.requested_at)}
+                            {formatDateTime(item.responded_at || item.requested_at)}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -919,8 +1101,8 @@ export function TraspasosPage() {
           </div>
         )}
 
-        {/* Tab: Devoluciones Externas Pendientes */}
-        {activeTab === 'devoluciones-externas' && (
+        {/* Tab: Devoluciones Externas Pendientes (super_admin) */}
+        {activeTab === 'devoluciones-externas' && user?.role === 'super_admin' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64">
@@ -940,7 +1122,7 @@ export function TraspasosPage() {
               <div className="overflow-x-auto">
                 <div className="p-4 bg-orange-50 border-b border-orange-200">
                   <p className="text-sm text-orange-800">
-                    <strong>Devoluciones pendientes:</strong> Estas son entregas a clientes externos que aún tienen canastillas por devolver. Cualquier usuario puede registrar la devolución.
+                    <strong>Devoluciones pendientes:</strong> Estas son entregas a clientes externos que aún tienen canastillas por devolver. Solo el super administrador puede asignar la devolución a un conductor.
                   </p>
                 </div>
                 <table className="w-full min-w-[700px]">
@@ -1027,7 +1209,7 @@ export function TraspasosPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm text-gray-900">
-                              {formatDate(item.responded_at || item.requested_at)}
+                              {formatDateTime(item.responded_at || item.requested_at)}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -1045,15 +1227,15 @@ export function TraspasosPage() {
                               )}
                               <button
                                 onClick={() => {
-                                  setSelectedTransferForReturn(item as unknown as Transfer)
-                                  setShowDevolucionModal(true)
+                                  setSelectedTransferForPickup(item as unknown as Transfer)
+                                  setShowAsignarRecogidaModal(true)
                                 }}
                                 className="inline-flex items-center text-orange-600 hover:text-orange-900 font-medium text-sm"
                               >
                                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
-                                Recoger Devolución
+                                Asignar Recogida
                               </button>
                             </div>
                           </td>
@@ -1062,6 +1244,102 @@ export function TraspasosPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Recogidas Pendientes (conductor) */}
+        {activeTab === 'devoluciones-externas' && user?.role === 'conductor' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+              </div>
+            ) : (pickupsPendientes || []).length === 0 ? (
+              <div className="p-12 text-center">
+                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-lg font-medium text-gray-900">Sin recogidas pendientes</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  No tienes recogidas asignadas en este momento
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div className="p-4 bg-orange-50 border-b border-orange-200">
+                  <p className="text-sm text-orange-800">
+                    <strong>Recogidas asignadas:</strong> Estas son las recogidas de canastillas que tienes pendientes. Marca como completada cuando hayas recogido las canastillas.
+                  </p>
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {(pickupsPendientes || []).map((pickup: any) => (
+                    <div key={pickup.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">📦</span>
+                            <h4 className="text-base font-semibold text-gray-900 truncate">
+                              {pickup.transfer?.sale_point?.name || pickup.transfer?.external_recipient_name || 'Cliente externo'}
+                            </h4>
+                          </div>
+                          {pickup.transfer?.sale_point?.address && (
+                            <p className="text-sm text-gray-600 mb-1">
+                              📍 {pickup.transfer.sale_point.address}{pickup.transfer.sale_point.city ? `, ${pickup.transfer.sale_point.city}` : ''}
+                            </p>
+                          )}
+                          {pickup.transfer?.sale_point?.contact_phone && (
+                            <p className="text-sm text-gray-600 mb-1">
+                              📞 {pickup.transfer.sale_point.contact_phone}
+                            </p>
+                          )}
+                          {!pickup.transfer?.sale_point && pickup.transfer?.external_recipient_phone && (
+                            <p className="text-sm text-gray-600 mb-1">
+                              📞 {pickup.transfer.external_recipient_phone}
+                            </p>
+                          )}
+                          {pickup.transfer?.external_recipient_empresa && (
+                            <p className="text-sm text-gray-500 mb-1">
+                              🏢 {pickup.transfer.external_recipient_empresa}
+                            </p>
+                          )}
+                          {pickup.transfer?.remision_number && (
+                            <p className="text-xs text-purple-600 font-medium mb-1">
+                              {pickup.transfer.remision_number}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                              {pickup.items_count} canastilla{pickup.items_count !== 1 ? 's' : ''} por recoger
+                            </span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                              Asignado: {formatDateTime(pickup.created_at)}
+                            </span>
+                            {pickup.assigned_by_user && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                Por: {pickup.assigned_by_user.first_name} {pickup.assigned_by_user.last_name}
+                              </span>
+                            )}
+                          </div>
+                          {pickup.notes && (
+                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                              <p className="text-xs text-yellow-800">📝 {pickup.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-shrink-0">
+                          <Button
+                            onClick={() => handleCompletarRecogida(pickup)}
+                            className="w-full sm:w-auto"
+                          >
+                            ✅ Marcar Completada
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1112,6 +1390,70 @@ export function TraspasosPage() {
         onSuccess={() => refreshTraspasos()}
         transfer={selectedTransferForReturn}
       />
+
+      {/* Modal Asignar Recogida a Conductor */}
+      <AsignarRecogidaModal
+        isOpen={showAsignarRecogidaModal}
+        onClose={() => {
+          setShowAsignarRecogidaModal(false)
+          setSelectedTransferForPickup(null)
+        }}
+        onSuccess={() => refreshTraspasos()}
+        transfer={selectedTransferForPickup}
+      />
+
+      {/* Modal Motivo de Rechazo/Cancelación */}
+      {showMotivoModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setShowMotivoModal(false)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                {motivoAccion === 'rechazar' ? 'Rechazar Traspaso' : 'Cancelar Traspaso'}
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Selecciona el motivo:
+              </p>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {(motivoAccion === 'rechazar' ? MOTIVOS_RECHAZO : MOTIVOS_CANCELACION).map((motivo) => (
+                  <label
+                    key={motivo}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      motivoSeleccionado === motivo
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="motivo"
+                      value={motivo}
+                      checked={motivoSeleccionado === motivo}
+                      onChange={() => setMotivoSeleccionado(motivo)}
+                      className="text-primary-500 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{motivo}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-3 mt-5">
+                <Button variant="outline" onClick={() => setShowMotivoModal(false)}>
+                  Volver
+                </Button>
+                <Button
+                  variant={motivoAccion === 'rechazar' ? 'danger' : 'danger'}
+                  onClick={motivoAccion === 'rechazar' ? handleConfirmarRechazo : handleConfirmarCancelacion}
+                  disabled={!motivoSeleccionado}
+                >
+                  {motivoAccion === 'rechazar' ? 'Rechazar' : 'Cancelar traspaso'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

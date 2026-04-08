@@ -36,7 +36,7 @@ export function InventarioDetallado() {
       while (hasMore) {
         const { data, error: canastillasError } = await supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, qr_code, size, color, shape, status, condition, tipo_propiedad, current_location, current_area, current_owner_id, proveedor_nombre, created_at')
           .eq('current_owner_id', user.id)
           .order('status')
           .order('codigo')

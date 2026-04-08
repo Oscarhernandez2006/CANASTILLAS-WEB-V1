@@ -11,6 +11,7 @@ export function DashboardPage() {
   const stats = useDashboardStats()
   const { user } = useAuthStore()
   const isSuperAdmin = user?.role === 'super_admin'
+  const canSeeLocations = isSuperAdmin || user?.role === 'consultor_proceso'
 
   // Calcular porcentajes
   const disponiblesPercent = stats.totalCanastillas > 0
@@ -136,8 +137,8 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Canastillas por Ubicación - Solo super_admin */}
-        {isSuperAdmin && (
+        {/* Canastillas por Ubicación - super_admin y consultor_proceso */}
+        {canSeeLocations && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Canastillas por Ubicación</h2>
             <LocationMap locations={stats.locations} />

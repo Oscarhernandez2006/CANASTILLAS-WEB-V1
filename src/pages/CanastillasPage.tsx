@@ -48,7 +48,7 @@ export function CanastillasPage() {
       while (hasMore) {
         const { data, error } = await supabase
           .from('canastillas')
-          .select('*')
+          .select('id, codigo, qr_code, size, color, status, condition, current_location, shape, tipo_propiedad, current_owner_id, created_at')
           .order('created_at', { ascending: false })
           .range(offset, offset + PAGE_SIZE - 1)
 

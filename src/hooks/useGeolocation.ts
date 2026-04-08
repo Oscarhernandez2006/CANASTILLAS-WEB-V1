@@ -169,8 +169,8 @@ export function useUserLocations() {
       )
       .subscribe()
 
-    // Refrescar cada 30 segundos como fallback
-    const interval = setInterval(fetchLocations, 30000)
+    // Refrescar cada 2 minutos como fallback (realtime es el principal)
+    const interval = setInterval(fetchLocations, 120000)
 
     return () => {
       channel.unsubscribe()

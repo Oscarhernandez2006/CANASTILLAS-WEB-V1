@@ -58,6 +58,7 @@ export type UserRole =
   | 'conductor'
   | 'pdv'
   | 'client'
+  | 'consultor_proceso'
 
 export interface Canastilla {
   id: string

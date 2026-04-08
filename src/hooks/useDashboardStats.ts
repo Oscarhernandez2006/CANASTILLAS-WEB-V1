@@ -41,6 +41,8 @@ interface DashboardStats {
 export function useDashboardStats() {
   const { user } = useAuthStore()
   const isSuperAdmin = user?.role === 'super_admin'
+  const isConsultorProceso = user?.role === 'consultor_proceso'
+  const canSeeAllCanastillas = isSuperAdmin || isConsultorProceso
 
   const [stats, setStats] = useState<DashboardStats>({
     totalCanastillas: 0,
@@ -75,8 +77,8 @@ export function useDashboardStats() {
           .from('canastillas')
           .select('*', { count: 'exact', head: true })
 
-        // Si NO es super_admin, filtrar solo las canastillas del usuario actual
-        if (!isSuperAdmin) {
+        // Si NO es super_admin ni consultor_proceso, filtrar solo las canastillas del usuario actual
+        if (!canSeeAllCanastillas) {
           query = query.eq('current_owner_id', user.id)
         }
 
@@ -164,7 +166,7 @@ export function useDashboardStats() {
             .eq('rentals.rental_type', rentalType)
             .eq('canastillas.status', 'EN_ALQUILER')
 
-          if (!isSuperAdmin) {
+          if (!canSeeAllCanastillas) {
             query = query.eq('canastillas.current_owner_id', user.id)
           }
 
@@ -207,7 +209,7 @@ export function useDashboardStats() {
           .select('current_location, current_area, status, current_owner_id')
           .not('status', 'in', '(DADA_DE_BAJA,EXTRAVIADA)')
 
-        if (!isSuperAdmin) {
+        if (!canSeeAllCanastillas) {
           locationQuery = locationQuery.eq('current_owner_id', user.id)
         }
 
@@ -317,14 +319,55 @@ export function useDashboardStats() {
       })
 
       // Convertir a array y ordenar por total (mayor a menor)
-      const locations = Object.values(locationMap)
+      let locations = Object.values(locationMap)
         .sort((a, b) => b.total - a.total)
+
+      // Filtrar ubicaciones para consultor_proceso
+      if (isConsultorProceso) {
+        const UBICACIONES_PROCESO = [
+          'DESPACHO BOVINO', 'DESPACHO PORCINO', 'TAT CONTAINER',
+          'DESPOSTE PORCINO', 'SACRIFICIO PORCINO', 'SACRIFICIO BOVINO',
+          'DESPOSTE BOVINO', 'SUBPRODUCTO BOVINO', 'SUBPRODUCTO PORCINO',
+        ]
+        locations = locations.filter(l =>
+          UBICACIONES_PROCESO.some(u => l.name.toUpperCase().includes(u))
+        )
+      }
 
       // Calcular ingresos (simulado por ahora - $5,000 por canastilla/día)
       const tarifaDiaria = 5000
       const diasPromedio = 15
       const ingresosEsteMes = totalEnAlquiler * tarifaDiaria * 30
       const proyeccionIngresos = totalEnAlquiler * tarifaDiaria * diasPromedio
+
+      // Recalcular totales para consultor_proceso basándose en ubicaciones filtradas
+      if (isConsultorProceso) {
+        const totals = locations.reduce((acc, l) => ({
+          total: acc.total + l.total,
+          disponibles: acc.disponibles + l.disponibles,
+          enAlquiler: acc.enAlquiler + l.enAlquiler,
+          enUsoInterno: acc.enUsoInterno + l.enUsoInterno,
+          enLavado: acc.enLavado + l.enLavado,
+          enReparacion: acc.enReparacion + l.enReparacion,
+          enRetorno: acc.enRetorno + l.enRetorno,
+        }), { total: 0, disponibles: 0, enAlquiler: 0, enUsoInterno: 0, enLavado: 0, enReparacion: 0, enRetorno: 0 })
+
+        setStats({
+          totalCanastillas: totals.total,
+          disponibles: totals.disponibles,
+          enAlquilerInterno: totals.enAlquiler,
+          enAlquilerExterno: 0,
+          enLavado: totals.enLavado,
+          enUsoInterno: totals.enUsoInterno,
+          enReparacion: totals.enReparacion,
+          enRetorno: totals.enRetorno,
+          ingresosEsteMes: 0,
+          proyeccionIngresos: 0,
+          locations,
+          loading: false,
+        })
+        return
+      }
 
       const counts = {
         totalCanastillas,

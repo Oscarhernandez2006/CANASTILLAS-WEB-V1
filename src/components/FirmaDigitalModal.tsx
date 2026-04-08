@@ -540,6 +540,11 @@ export function FirmaDigitalModal({
                       />
                     </div>
                   </div>
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-red-700 font-medium text-center">
+                      ⚠️ El tercero se hace responsable de las canastillas que estén cargadas en el vehículo.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -570,6 +575,11 @@ export function FirmaDigitalModal({
                     </p>
                     <p className="text-sm text-gray-700">
                       <span className="font-medium">Cédula:</span> {prefillTercero?.cedula || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-red-700 font-medium text-center">
+                      ⚠️ El tercero se hace responsable de las canastillas que estén cargadas en el vehículo.
                     </p>
                   </div>
                 </div>
