@@ -195,12 +195,13 @@ export function AgregarCanastillasAlquilerModal({ isOpen, onClose, onSuccess, re
         if (itemsError) throw itemsError
       }
 
-      // 2. Actualizar canastillas a EN_ALQUILER
+      // 2. Actualizar canastillas a EN_ALQUILER con ubicación del cliente
+      const clientLocationName = rental.sale_point?.name || 'Cliente externo'
       for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
         const batch = canastillaIds.slice(i, i + BATCH_SIZE)
         const { error: updateErr } = await supabase
           .from('canastillas')
-          .update({ status: 'EN_ALQUILER' })
+          .update({ status: 'EN_ALQUILER', current_location: clientLocationName })
           .in('id', batch)
         if (updateErr) throw updateErr
       }

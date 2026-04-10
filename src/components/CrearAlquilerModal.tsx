@@ -326,12 +326,13 @@ export function CrearAlquilerModal({ isOpen, onClose, onSuccess }: CrearAlquiler
         if (itemsError) throw itemsError
       }
 
-      // 5. Actualizar estado de canastillas
+      // 5. Actualizar estado de canastillas y ubicación al nombre del cliente
+      const clientLocationName = selectedSalePoint?.name || 'Cliente externo'
       for (let i = 0; i < canastillaIds.length; i += BATCH_SIZE) {
         const batch = canastillaIds.slice(i, i + BATCH_SIZE)
         const { error: updateError } = await supabase
           .from('canastillas')
-          .update({ status: 'EN_ALQUILER' })
+          .update({ status: 'EN_ALQUILER', current_location: clientLocationName })
           .in('id', batch)
         if (updateError) throw updateError
       }

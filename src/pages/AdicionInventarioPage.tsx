@@ -1,12 +1,14 @@
-/** @module AdicionInventarioPage @description Adición de canastillas existentes al inventario de cualquier usuario. Solo para administradores. Selección por lotes como en traspasos. */
+/** @module AdicionInventarioPage @description Adición de canastillas existentes o creación de nuevas al inventario de cualquier usuario. Solo para administradores. */
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
 import { SearchableUserSelect } from '@/components/SearchableUserSelect'
+import { DynamicSelect } from '@/components/DynamicSelect'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
 import { logAuditEvent } from '@/services/auditService'
-import type { User, Canastilla } from '@/types'
+import type { User, Canastilla, TipoPropiedad } from '@/types'
 
 interface LoteGroup {
   key: string
@@ -36,17 +38,35 @@ export function AdicionInventarioPage() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [historial, setHistorial] = useState<{ fecha: string; usuario: string; cantidad: number }[]>([])
 
+  // Modo: existentes (traspasar del inventario propio) o crear (crear nuevas directamente)
+  const [modo, setModo] = useState<'existentes' | 'crear'>('crear')
+
+  // Atributos dinámicos para modo crear
+  const colores = useCanastillaAttributes('COLOR')
+  const tamaños = useCanastillaAttributes('SIZE')
+  const formas = useCanastillaAttributes('FORMA')
+  const condiciones = useCanastillaAttributes('CONDICION')
+
+  const [crearForm, setCrearForm] = useState({
+    cantidad: '1',
+    size: '',
+    color: '',
+    shape: '',
+    condition: 'Bueno',
+    tipo_propiedad: 'PROPIA' as TipoPropiedad,
+  })
+
   useEffect(() => {
     fetchUsers()
   }, [])
 
   useEffect(() => {
-    if (selectedUserId) {
+    if (selectedUserId && modo === 'existentes') {
       fetchCanastillasYAgrupar()
     } else {
       setLotes([])
     }
-  }, [selectedUserId])
+  }, [selectedUserId, modo])
 
   const fetchUsers = async () => {
     try {
@@ -274,8 +294,126 @@ export function AdicionInventarioPage() {
   const selectedUser = users.find(u => u.id === selectedUserId)
   const lotesConSeleccion = lotes.filter(l => l.cantidadAgregar > 0)
 
+  // Función para generar código único
+  const generarCodigoUnico = (index: number) => {
+    const timestamp = Date.now().toString(36)
+    const random = Math.random().toString(36).substring(2, 6)
+    const indexStr = index.toString(36).padStart(4, '0')
+    return `C${timestamp}${indexStr}${random}`.toUpperCase()
+  }
+
+  const cantidadCrear = Math.max(1, parseInt(crearForm.cantidad) || 1)
+
+  const handleCrearNuevas = async () => {
+    if (!currentUser || !selectedUserId) return
+    setLoading(true)
+    setProgress(0)
+    setError('')
+    setSuccess('')
+
+    try {
+      const destinoUser = users.find(u => u.id === selectedUserId)
+      if (!destinoUser) throw new Error('Usuario destino no encontrado')
+
+      if (!crearForm.size?.trim()) throw new Error('El tamaño es requerido')
+      if (!crearForm.color?.trim()) throw new Error('El color es requerido')
+
+      const cantidadNum = Math.max(1, parseInt(crearForm.cantidad) || 1)
+      if (cantidadNum < 1 || cantidadNum > 10000) throw new Error('La cantidad debe estar entre 1 y 10,000')
+
+      const destinoNombre = `${destinoUser.first_name || ''} ${destinoUser.last_name || ''}`.trim()
+
+      // Crear canastillas con ubicación = nombre del usuario destino
+      const canastillas = []
+      for (let i = 0; i < cantidadNum; i++) {
+        const codigo = generarCodigoUnico(i)
+        canastillas.push({
+          codigo,
+          qr_code: codigo,
+          size: crearForm.size,
+          color: crearForm.color,
+          shape: crearForm.shape || null,
+          status: 'DISPONIBLE',
+          condition: crearForm.condition,
+          current_location: destinoNombre,
+          current_area: null,
+          current_owner_id: currentUser.id,
+          tipo_propiedad: crearForm.tipo_propiedad,
+        })
+      }
+
+      // Insertar en lotes de 500 (con owner del admin actual para pasar RLS)
+      const BATCH_SIZE = 500
+      let insertados = 0
+      const allInsertedIds: string[] = []
+
+      for (let i = 0; i < canastillas.length; i += BATCH_SIZE) {
+        const batch = canastillas.slice(i, i + BATCH_SIZE)
+        const { data: inserted, error: insertError } = await supabase
+          .from('canastillas')
+          .insert(batch)
+          .select('id')
+        if (insertError) throw new Error(`Error al crear canastillas: ${insertError.message}`)
+
+        if (inserted) allInsertedIds.push(...inserted.map((r: any) => r.id))
+        insertados += batch.length
+        setProgress(Math.round((insertados / canastillas.length) * 50))
+      }
+
+      // Reasignar al usuario destino en lotes
+      let reasignados = 0
+      for (let i = 0; i < allInsertedIds.length; i += BATCH_SIZE) {
+        const batch = allInsertedIds.slice(i, i + BATCH_SIZE)
+        const { error: updateError } = await supabase
+          .from('canastillas')
+          .update({ current_owner_id: selectedUserId })
+          .in('id', batch)
+        if (updateError) throw new Error(`Error al asignar canastillas al usuario: ${updateError.message}`)
+
+        reasignados += batch.length
+        setProgress(50 + Math.round((reasignados / allInsertedIds.length) * 50))
+      }
+
+      // Registrar en auditoría
+      const userName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim()
+      await logAuditEvent({
+        userId: currentUser.id,
+        userName,
+        userRole: currentUser.role,
+        action: 'CREATE',
+        module: 'adicion_inventario',
+        description: `Creación de ${cantidadNum} canastilla(s) nuevas para ${destinoNombre}`,
+        details: {
+          usuario_destino_id: selectedUserId,
+          usuario_destino_nombre: destinoNombre,
+          total_canastillas: cantidadNum,
+          tamaño: crearForm.size,
+          color: crearForm.color,
+          forma: crearForm.shape,
+          condición: crearForm.condition,
+          tipo_propiedad: crearForm.tipo_propiedad,
+          ubicación: destinoNombre,
+        },
+      })
+
+      setSuccess(`Se crearon ${cantidadNum} canastilla(s) en el inventario de ${destinoNombre}`)
+      setHistorial(prev => [{
+        fecha: new Date().toLocaleString('es-CO'),
+        usuario: destinoNombre,
+        cantidad: cantidadNum,
+      }, ...prev])
+      setSelectedUserId('')
+      setCrearForm({ cantidad: '1', size: '', color: '', shape: '', condition: 'Bueno', tipo_propiedad: 'PROPIA' })
+    } catch (err) {
+      setError((err as Error).message || 'Error al crear canastillas')
+    } finally {
+      setLoading(false)
+      setProgress(0)
+    }
+  }
+
   return (
-    <DashboardLayout title="Cargue a Inventario" subtitle="Asignar canastillas existentes al inventario de un usuario">
+    <DashboardLayout title="Cargue a Inventario" subtitle="Crear o asignar canastillas al inventario de un usuario">
       <div className="space-y-6">
 
         {/* Info */}
@@ -285,8 +423,8 @@ export function AdicionInventarioPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm">
-              Seleccione canastillas de <strong>su inventario personal</strong> y asígnelas al usuario destino. 
-              Solo se muestran canastillas con estado <strong>DISPONIBLE</strong> de su propio inventario.
+              <strong>Crear nuevas:</strong> Crea canastillas directamente en el inventario del usuario con su ubicación.
+              <strong className="ml-2">Existentes:</strong> Transfiere canastillas de su inventario personal al usuario destino.
               Todos los movimientos quedan registrados en el log de auditoría.
             </p>
           </div>
@@ -359,8 +497,143 @@ export function AdicionInventarioPage() {
               </div>
             </div>
 
-            {/* Paso 2: Seleccionar canastillas por lotes */}
+            {/* Toggle de modo */}
             {selectedUserId && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Modo:</span>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setModo('crear')}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                        modo === 'crear'
+                          ? 'bg-primary-600 text-white shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Crear Nuevas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModo('existentes')}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                        modo === 'existentes'
+                          ? 'bg-primary-600 text-white shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Desde Mi Inventario
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modo CREAR: Formulario para crear canastillas nuevas */}
+            {selectedUserId && modo === 'crear' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-primary-600 px-6 py-4">
+                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <span className="bg-white text-primary-600 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                    Crear Canastillas Nuevas para {selectedUser?.first_name} {selectedUser?.last_name}
+                  </h2>
+                </div>
+                <div className="p-6">
+                  <div className="bg-green-50 border-l-4 border-green-400 p-3 mb-4">
+                    <p className="text-sm text-green-700">
+                      Las canastillas se crearán directamente en el inventario de <strong>{selectedUser?.first_name} {selectedUser?.last_name}</strong> con ubicación a su nombre.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Cantidad */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10000"
+                        value={crearForm.cantidad}
+                        onChange={(e) => setCrearForm({ ...crearForm, cantidad: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        required
+                      />
+                    </div>
+
+                    {/* Tamaño */}
+                    <DynamicSelect
+                      label="Tamaño"
+                      value={crearForm.size}
+                      options={tamaños.attributes}
+                      onChange={(value) => setCrearForm({ ...crearForm, size: value })}
+                      onAddNew={tamaños.addAttribute}
+                      required
+                      placeholder="Seleccionar tamaño..."
+                    />
+
+                    {/* Color */}
+                    <DynamicSelect
+                      label="Color"
+                      value={crearForm.color}
+                      options={colores.attributes}
+                      onChange={(value) => setCrearForm({ ...crearForm, color: value })}
+                      onAddNew={colores.addAttribute}
+                      required
+                      placeholder="Seleccionar color..."
+                    />
+
+                    {/* Forma */}
+                    <DynamicSelect
+                      label="Forma"
+                      value={crearForm.shape}
+                      options={formas.attributes}
+                      onChange={(value) => setCrearForm({ ...crearForm, shape: value })}
+                      onAddNew={formas.addAttribute}
+                      placeholder="Seleccionar forma..."
+                    />
+
+                    {/* Condición */}
+                    <DynamicSelect
+                      label="Condición"
+                      value={crearForm.condition}
+                      options={condiciones.attributes}
+                      onChange={(value) => setCrearForm({ ...crearForm, condition: value })}
+                      onAddNew={condiciones.addAttribute}
+                      required
+                      placeholder="Seleccionar condición..."
+                    />
+
+                    {/* Tipo de Propiedad */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Tipo de Propiedad <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={crearForm.tipo_propiedad}
+                        onChange={(e) => setCrearForm({ ...crearForm, tipo_propiedad: e.target.value as TipoPropiedad })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="PROPIA">Propia</option>
+                        <option value="ALQUILADA">Alquilada</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <Button
+                      onClick={handleCrearNuevas}
+                      disabled={loading || !crearForm.size || !crearForm.color || !selectedUserId}
+                    >
+                      Crear {cantidadCrear} Canastilla(s) para {selectedUser?.first_name}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modo EXISTENTES: Paso 2 - Seleccionar canastillas por lotes */}
+            {selectedUserId && modo === 'existentes' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="bg-primary-600 px-6 py-4">
                   <h2 className="text-lg font-semibold text-white flex items-center gap-2">
