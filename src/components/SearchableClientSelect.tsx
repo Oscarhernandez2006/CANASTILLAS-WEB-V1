@@ -1,35 +1,24 @@
-/** @module SearchableUserSelect @description Selector de usuarios con búsqueda y filtrado en tiempo real. */
+/** @module SearchableClientSelect @description Selector de clientes/puntos de venta con búsqueda y filtrado en tiempo real. */
 import { useState, useRef, useEffect } from 'react'
+import type { SalePoint } from '@/types'
 
-interface UserOption {
-  id: string
-  first_name: string
-  last_name: string
-  email: string
-  role?: string
-  phone?: string
-}
-
-interface SearchableUserSelectProps {
-  users: UserOption[]
+interface SearchableClientSelectProps {
+  clients: SalePoint[]
   value: string
-  onChange: (userId: string) => void
+  onChange: (clientId: string) => void
   placeholder?: string
   required?: boolean
   disabled?: boolean
-  /** Render extra info badge next to user name */
-  renderBadge?: (user: UserOption) => React.ReactNode
 }
 
-export function SearchableUserSelect({
-  users,
+export function SearchableClientSelect({
+  clients,
   value,
   onChange,
-  placeholder = 'Buscar usuario...',
+  placeholder = 'Buscar cliente o punto de venta...',
   required = false,
   disabled = false,
-  renderBadge,
-}: SearchableUserSelectProps) {
+}: SearchableClientSelectProps) {
   const [search, setSearch] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [highlightIndex, setHighlightIndex] = useState(-1)
@@ -37,22 +26,22 @@ export function SearchableUserSelect({
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
 
-  const selectedUser = users.find(u => u.id === value)
+  const selectedClient = clients.find(c => c.id === value)
 
   const filtered = search.trim()
-    ? users.filter(u => {
+    ? clients.filter(c => {
         const term = search.toLowerCase()
         return (
-          u.first_name?.toLowerCase().includes(term) ||
-          u.last_name?.toLowerCase().includes(term) ||
-          u.email?.toLowerCase().includes(term) ||
-          `${u.first_name} ${u.last_name}`.toLowerCase().includes(term) ||
-          u.phone?.toLowerCase().includes(term)
+          c.name?.toLowerCase().includes(term) ||
+          c.contact_name?.toLowerCase().includes(term) ||
+          c.contact_phone?.toLowerCase().includes(term) ||
+          c.city?.toLowerCase().includes(term) ||
+          c.identification?.toLowerCase().includes(term) ||
+          c.code?.toLowerCase().includes(term)
         )
       })
-    : users
+    : clients
 
-  // Close on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -63,7 +52,6 @@ export function SearchableUserSelect({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Scroll highlighted item into view
   useEffect(() => {
     if (highlightIndex >= 0 && listRef.current) {
       const items = listRef.current.querySelectorAll('li')
@@ -71,8 +59,8 @@ export function SearchableUserSelect({
     }
   }, [highlightIndex])
 
-  const handleSelect = (userId: string) => {
-    onChange(userId)
+  const handleSelect = (clientId: string) => {
+    onChange(clientId)
     setSearch('')
     setIsOpen(false)
   }
@@ -92,7 +80,6 @@ export function SearchableUserSelect({
       }
       return
     }
-
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
@@ -114,23 +101,21 @@ export function SearchableUserSelect({
     }
   }
 
+  const getTypeLabel = (type: string) =>
+    type === 'CLIENTE_EXTERNO' ? 'Externo' : 'Punto de venta'
+
+  const getTypeColor = (type: string) =>
+    type === 'CLIENTE_EXTERNO'
+      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+
   return (
     <div ref={containerRef} className="relative">
-      {/* Hidden input for form validation */}
       {required && (
-        <input
-          type="text"
-          required
-          value={value}
-          onChange={() => {}}
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        <input type="text" required value={value} onChange={() => {}} className="sr-only" tabIndex={-1} aria-hidden="true" />
       )}
 
-      {/* Selected user display / Search input */}
-      {value && selectedUser && !isOpen ? (
+      {value && selectedClient && !isOpen ? (
         <div
           className="flex items-center justify-between w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 cursor-pointer hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
           onClick={() => {
@@ -140,27 +125,26 @@ export function SearchableUserSelect({
             }
           }}
         >
-          <div className="flex items-center space-x-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-semibold text-primary-700 dark:text-primary-300">
-                {selectedUser.first_name?.charAt(0).toUpperCase()}
-              </span>
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {selectedUser.first_name} {selectedUser.last_name}
-                {renderBadge && renderBadge(selectedUser)}
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{selectedClient.name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {selectedClient.contact_name} — {selectedClient.city}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{selectedUser.email}</p>
             </div>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${getTypeColor(selectedClient.client_type)}`}>
+              {getTypeLabel(selectedClient.client_type)}
+            </span>
           </div>
           {!disabled && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClear()
-              }}
+              onClick={(e) => { e.stopPropagation(); handleClear() }}
               className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 flex-shrink-0 ml-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,11 +164,7 @@ export function SearchableUserSelect({
             ref={inputRef}
             type="text"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setHighlightIndex(-1)
-              setIsOpen(true)
-            }}
+            onChange={(e) => { setSearch(e.target.value); setHighlightIndex(-1); setIsOpen(true) }}
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
@@ -194,42 +174,40 @@ export function SearchableUserSelect({
         </div>
       )}
 
-      {/* Dropdown */}
       {isOpen && (
-        <ul
-          ref={listRef}
-          className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg max-h-60 overflow-y-auto"
-        >
+        <ul ref={listRef} className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg max-h-60 overflow-y-auto">
           {filtered.length === 0 ? (
             <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
-              {search ? 'No se encontraron usuarios' : 'No hay usuarios disponibles'}
+              {search ? 'No se encontraron clientes' : 'No hay clientes disponibles'}
             </li>
           ) : (
-            filtered.map((user, index) => (
+            filtered.map((client, index) => (
               <li
-                key={user.id}
-                onClick={() => handleSelect(user.id)}
+                key={client.id}
+                onClick={() => handleSelect(client.id)}
                 className={`flex items-center space-x-3 px-4 py-2.5 cursor-pointer transition-colors ${
                   index === highlightIndex
                     ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-900 dark:text-primary-100'
-                    : user.id === value
+                    : client.id === value
                     ? 'bg-gray-50 dark:bg-gray-700/50'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 }`}
               >
-                <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-semibold text-primary-700 dark:text-primary-300">
-                    {user.first_name?.charAt(0).toUpperCase()}
-                  </span>
+                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {user.first_name} {user.last_name}
-                    {renderBadge && renderBadge(user)}
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{client.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {client.contact_name}{client.city ? ` — ${client.city}` : ''}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
                 </div>
-                {user.id === value && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${getTypeColor(client.client_type)}`}>
+                  {getTypeLabel(client.client_type)}
+                </span>
+                {client.id === value && (
                   <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>

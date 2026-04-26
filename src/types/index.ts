@@ -230,7 +230,7 @@ export interface CanastillaAttribute {
 
 // ========== MÓDULO DE TRASPASOS ==========
 
-export type TransferStatus = 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO' | 'CANCELADO'
+export type TransferStatus = 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO' | 'CANCELADO' | 'EXPIRADA' | 'ACEPTADO_AUTO'
 
 export interface Transfer {
   id: string
@@ -484,6 +484,25 @@ export type PermissionKey =
   | 'rutas.crear'
   | 'rutas.asignar'
   | 'rutas.ver_seguimiento'
+  // Trazabilidad
+  | 'trazabilidad.ver'
+  | 'trazabilidad.buscar'
+  | 'trazabilidad.ver_historial'
+  // Permisos
+  | 'permisos.ver'
+  | 'permisos.editar'
+  // Adición Inventario
+  | 'adicion_inventario.ver'
+  | 'adicion_inventario.agregar'
+  // Consultar Inventario Usuario
+  | 'consultar_inventario_usuario.ver'
+  // Historial Traspasos
+  | 'historial_traspasos.ver'
+  | 'historial_traspasos.exportar'
+  // Facturas Pérdida
+  | 'facturas_perdida.ver'
+  | 'facturas_perdida.emitir'
+  | 'facturas_perdida.cancelar'
 
 // Módulos del sistema (para agrupar permisos en la UI)
 export type PermissionModule =
@@ -502,6 +521,12 @@ export type PermissionModule =
   | 'control_pdv'
   | 'auditoria'
   | 'rutas'
+  | 'trazabilidad'
+  | 'permisos'
+  | 'adicion_inventario'
+  | 'consultar_inventario_usuario'
+  | 'historial_traspasos'
+  | 'facturas_perdida'
 
 // Estructura de un permiso en la base de datos
 export interface UserPermission {

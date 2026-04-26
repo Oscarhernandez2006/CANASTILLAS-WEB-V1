@@ -14,6 +14,8 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
   ACEPTADO: { label: 'Aceptado', bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-300', dot: 'bg-green-400' },
   RECHAZADO: { label: 'Rechazado', bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-300', dot: 'bg-red-400' },
   CANCELADO: { label: 'Cancelado', bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' },
+  EXPIRADA: { label: 'Expirada', bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-700 dark:text-orange-300', dot: 'bg-orange-400' },
+  ACEPTADO_AUTO: { label: 'Aceptado Automático', bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-700 dark:text-blue-300', dot: 'bg-blue-400' },
 }
 
 function formatDate(dateStr: string): string {
@@ -46,6 +48,10 @@ function TransferDetailCard({ transfer }: { transfer: HistorialTransfer }) {
         ? 'border-green-200 dark:border-green-800'
         : transfer.status === 'RECHAZADO'
         ? 'border-red-200 dark:border-red-800'
+        : transfer.status === 'EXPIRADA'
+        ? 'border-orange-200 dark:border-orange-800'
+        : transfer.status === 'ACEPTADO_AUTO'
+        ? 'border-blue-200 dark:border-blue-800'
         : 'border-gray-200 dark:border-gray-700'
     } bg-white dark:bg-gray-900 hover:shadow-md`}>
       {/* Header */}
@@ -183,14 +189,16 @@ function TransferDetailCard({ transfer }: { transfer: HistorialTransfer }) {
               <span className="text-gray-500 dark:text-gray-400 block text-xs font-medium uppercase tracking-wide mb-0.5">Canastillas</span>
               <p className="text-gray-900 dark:text-white font-medium text-lg">{transfer.items_count ?? 0}</p>
             </div>
-            {transfer.rejection_reason && (transfer.status === 'RECHAZADO' || transfer.status === 'CANCELADO') && (
+            {transfer.rejection_reason && (transfer.status === 'RECHAZADO' || transfer.status === 'CANCELADO' || transfer.status === 'EXPIRADA') && (
               <div className="sm:col-span-2">
                 <span className="text-gray-500 dark:text-gray-400 block text-xs font-medium uppercase tracking-wide mb-0.5">
-                  {transfer.status === 'RECHAZADO' ? 'Motivo del rechazo' : 'Motivo de cancelación'}
+                  {transfer.status === 'RECHAZADO' ? 'Motivo del rechazo' : transfer.status === 'EXPIRADA' ? 'Motivo de expiración' : 'Motivo de cancelación'}
                 </span>
                 <div className={`mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
                   transfer.status === 'RECHAZADO'
                     ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                    : transfer.status === 'EXPIRADA'
+                    ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
                 }`}>
                   <span>⚠️</span>
@@ -249,7 +257,7 @@ export function HistorialTraspasosPage() {
       <div className="space-y-6">
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
           <button
             onClick={() => updateFilter('status', filters.status === 'PENDIENTE' ? '' : 'PENDIENTE')}
             className={`rounded-xl p-4 text-left transition-all duration-200 border-2 ${
@@ -291,6 +299,34 @@ export function HistorialTraspasosPage() {
               <span className="text-xs font-medium text-red-700 dark:text-red-300 uppercase tracking-wide">Rechazados</span>
             </div>
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{statusCounts.RECHAZADO}</p>
+          </button>
+          <button
+            onClick={() => updateFilter('status', filters.status === 'EXPIRADA' ? '' : 'EXPIRADA')}
+            className={`rounded-xl p-4 text-left transition-all duration-200 border-2 ${
+              filters.status === 'EXPIRADA'
+                ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-200 dark:ring-orange-800'
+                : 'border-transparent bg-white dark:bg-gray-900 hover:border-orange-200 dark:hover:border-orange-800'
+            } shadow-sm`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-3 h-3 rounded-full bg-orange-400" />
+              <span className="text-xs font-medium text-orange-700 dark:text-orange-300 uppercase tracking-wide">Expiradas</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{statusCounts.EXPIRADA}</p>
+          </button>
+          <button
+            onClick={() => updateFilter('status', filters.status === 'ACEPTADO_AUTO' ? '' : 'ACEPTADO_AUTO')}
+            className={`rounded-xl p-4 text-left transition-all duration-200 border-2 ${
+              filters.status === 'ACEPTADO_AUTO'
+                ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-200 dark:ring-blue-800'
+                : 'border-transparent bg-white dark:bg-gray-900 hover:border-blue-200 dark:hover:border-blue-800'
+            } shadow-sm`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-3 h-3 rounded-full bg-blue-400" />
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-300 uppercase tracking-wide">Auto-Aceptados</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{statusCounts.ACEPTADO_AUTO}</p>
           </button>
           <div className="rounded-xl p-4 text-left bg-white dark:bg-gray-900 shadow-sm border-2 border-transparent">
             <div className="flex items-center gap-2 mb-1">

@@ -69,6 +69,19 @@ export function useTraspasos() {
     try {
       setLoading(true)
 
+      // Auto-aceptar traspasos PENDIENTES con más de 7 horas
+      // Las canastillas viajan al destinatario automáticamente
+      try {
+        await supabase.rpc('auto_accept_pending_transfers')
+      } catch (autoAcceptErr) {
+        // Fallback: intentar con la función legacy
+        try {
+          await supabase.rpc('expire_pending_transfers')
+        } catch (legacyErr) {
+          console.warn('No se pudo ejecutar auto_accept RPC:', legacyErr)
+        }
+      }
+
       // Función auxiliar para obtener el conteo real de items
       const getItemsCount = async (transferId: string): Promise<number> => {
         const { count, error } = await supabase
@@ -159,7 +172,7 @@ export function useTraspasos() {
           to_user:to_user_id(first_name, last_name, email)
         `)
         .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-        .in('status', ['ACEPTADO', 'RECHAZADO', 'CANCELADO'])
+        .in('status', ['ACEPTADO', 'RECHAZADO', 'CANCELADO', 'EXPIRADA', 'ACEPTADO_AUTO'])
         .order('responded_at', { ascending: false })
         .limit(50)
 

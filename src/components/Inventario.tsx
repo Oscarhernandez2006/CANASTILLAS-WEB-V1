@@ -16,11 +16,8 @@ interface LoteItem {
   canastillas: string[]
 }
 
-const UBICACIONES_CONSULTOR_PROCESO = [
-  'DESPACHO BOVINO', 'DESPACHO PORCINO', 'TAT CONTAINER',
-  'DESPOSTE PORCINO', 'SACRIFICIO PORCINO', 'SACRIFICIO BOVINO',
-  'DESPOSTE BOVINO', 'SUBPRODUCTO BOVINO', 'SUBPRODUCTO PORCINO',
-]
+const CONSULTOR_PROCESO_EXCLUIR_PREFIX = 'PDV'
+const CONSULTOR_PROCESO_EXCLUIR_EXACTOS = ['CANASTILLERO', 'EN TRANSITO', 'INVERSIONES SERRANO', 'LA PARISIENNE', 'OFICINA DE SISTEMAS']
 
 interface ConsultorUsuario {
   id: string
@@ -92,19 +89,28 @@ export function Inventario() {
       setLoading(true)
       setError(null)
 
-      // Cargar usuarios cuyo department coincida con las ubicaciones permitidas
+      // Cargar usuarios excluyendo los de PDV (puntos de venta)
       const { data: usersData, error: usersErr } = await supabase
         .from('users')
         .select('id, first_name, last_name, email, department')
         .eq('is_active', true)
-        .in('department', UBICACIONES_CONSULTOR_PROCESO)
+        .not('department', 'is', null)
         .order('department')
 
       if (usersErr) throw usersErr
 
+      // Filtrar excluyendo PDV, CANASTILLERO, EN TRANSITO, INVERSIONES SERRANO, LA PARISIENNE
+      const filteredUsers = (usersData || []).filter(u => {
+        const dept = (u.department || '').toUpperCase()
+        if (!dept) return false
+        if (dept.startsWith(CONSULTOR_PROCESO_EXCLUIR_PREFIX)) return false
+        if (CONSULTOR_PROCESO_EXCLUIR_EXACTOS.includes(dept)) return false
+        return true
+      })
+
       // Para cada usuario, contar sus canastillas
       const usersWithCounts: ConsultorUsuario[] = await Promise.all(
-        (usersData || []).map(async (u) => {
+        filteredUsers.map(async (u) => {
           const { count } = await supabase
             .from('canastillas')
             .select('*', { count: 'exact', head: true })
@@ -270,13 +276,26 @@ export function Inventario() {
           const BATCH_SIZE = 500
           for (let i = 0; i < transferIds.length; i += BATCH_SIZE) {
             const batch = transferIds.slice(i, i + BATCH_SIZE)
-            const { data: itemsRetenidos, error: errorItems } = await supabase
-              .from('transfer_items')
-              .select('canastilla_id')
-              .in('transfer_id', batch)
 
-            if (!errorItems && itemsRetenidos) {
-              canastillasRetenidas = [...canastillasRetenidas, ...itemsRetenidos.map(item => item.canastilla_id)]
+            // Paginar resultados (Supabase limita a 1000 filas por query)
+            let itemOffset = 0
+            let hasMoreItems = true
+            const ITEMS_PAGE = 1000
+
+            while (hasMoreItems) {
+              const { data: itemsRetenidos, error: errorItems } = await supabase
+                .from('transfer_items')
+                .select('canastilla_id')
+                .in('transfer_id', batch)
+                .range(itemOffset, itemOffset + ITEMS_PAGE - 1)
+
+              if (!errorItems && itemsRetenidos && itemsRetenidos.length > 0) {
+                canastillasRetenidas = [...canastillasRetenidas, ...itemsRetenidos.map(item => item.canastilla_id)]
+                itemOffset += ITEMS_PAGE
+                hasMoreItems = itemsRetenidos.length === ITEMS_PAGE
+              } else {
+                hasMoreItems = false
+              }
             }
           }
         }
@@ -864,43 +883,43 @@ export function Inventario() {
 
       {/* Stats Cards */}
       <div className={`grid grid-cols-2 md:grid-cols-3 ${isSuperAdmin ? 'xl:grid-cols-6' : 'lg:grid-cols-5'} gap-3 sm:gap-4`}>
-        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
           <div>
-            <p className="text-gray-600 text-xs sm:text-sm font-medium">Total</p>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mt-1 sm:mt-2">{totalCanastillas}</p>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">En tu inventario</p>
+            <p className="text-sm font-medium text-white/80">Total</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{totalCanastillas}</p>
+            <p className="text-xs text-white/60 mt-1 hidden sm:block">En tu inventario</p>
           </div>
         </div>
-        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-green-50 border-green-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-600 dark:to-emerald-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
           <div>
-            <p className="text-gray-600 text-xs sm:text-sm font-medium">Disponibles</p>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600 mt-1 sm:mt-2">{canastillasDisponibles}</p>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Libres para usar</p>
+            <p className="text-sm font-medium text-white/80">Disponibles</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{canastillasDisponibles}</p>
+            <p className="text-xs text-white/60 mt-1 hidden sm:block">Libres para usar</p>
           </div>
         </div>
-        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-amber-50 border-amber-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 dark:from-amber-600 dark:to-amber-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
           <div>
-            <p className="text-gray-600 text-xs sm:text-sm font-medium">En Traspaso</p>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-600 mt-1 sm:mt-2">{canastillasEnTraspaso}</p>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Pendientes</p>
+            <p className="text-sm font-medium text-white/80">En Traspaso</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{canastillasEnTraspaso}</p>
+            <p className="text-xs text-white/60 mt-1 hidden sm:block">Pendientes</p>
           </div>
         </div>
-        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-cyan-50 border-cyan-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 dark:from-cyan-600 dark:to-cyan-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
           <div>
-            <p className="text-gray-600 text-xs sm:text-sm font-medium">En Lavado</p>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-cyan-600 mt-1 sm:mt-2">{canastillasEnLavado}</p>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">En proceso</p>
+            <p className="text-sm font-medium text-white/80">En Lavado</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{canastillasEnLavado}</p>
+            <p className="text-xs text-white/60 mt-1 hidden sm:block">En proceso</p>
           </div>
         </div>
-        <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-amber-50 border-amber-300 shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 dark:from-orange-600 dark:to-orange-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
           <div>
-            <p className="text-gray-600 text-xs sm:text-sm font-medium">En Retorno</p>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-600 mt-1 sm:mt-2">{canastillasEnRetorno}</p>
+            <p className="text-sm font-medium text-white/80">En Retorno</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{canastillasEnRetorno}</p>
             {canastillasEnRetorno > 0 && (
               <button
                 onClick={recibirCanastillasEnRetorno}
                 disabled={recibiendoRetorno}
-                className="mt-2 px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                className="mt-2 px-3 py-1 bg-white/20 hover:bg-white/30 text-white text-xs font-medium rounded-lg disabled:opacity-50 transition-colors backdrop-blur-sm"
               >
                 {recibiendoRetorno ? 'Recibiendo...' : `Recibir (${canastillasEnRetorno})`}
               </button>
@@ -908,35 +927,35 @@ export function Inventario() {
           </div>
         </div>
         {isSuperAdmin && (
-          <div className="p-3 sm:p-4 lg:p-6 rounded-lg border bg-gray-300 border-gray-500 shadow-sm hover:shadow-md transition-shadow col-span-2 xl:col-span-1">
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-500 to-gray-600 dark:from-gray-600 dark:to-gray-700 p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 col-span-2 xl:col-span-1">
             <div>
-              <p className="text-gray-700 text-xs sm:text-sm font-medium">Destrucción</p>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mt-1 sm:mt-2">{enDestruccion}</p>
+              <p className="text-sm font-medium text-white/80">Destrucción</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1">{enDestruccion}</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Tabla de Lotes */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Canastillas por Lote</h2>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Canastillas por Lote</h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
             {lotes.length} lotes ({totalEnLotes} canastillas)
           </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Estado</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Tipo</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Color</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Tamaño</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Forma</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Condición</th>
-                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Cantidad</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Color</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Tamaño</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Forma</th>
+                <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Condición</th>
+                <th className="px-6 py-3.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Cantidad</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">

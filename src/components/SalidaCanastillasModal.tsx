@@ -1,6 +1,7 @@
 /** @module SalidaCanastillasModal @description Modal para dar salida (baja, extravío, fuera de servicio) a canastillas. */
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
+import { AuthCodeGate } from './AuthCodeGate'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logAuditEvent } from '@/services/auditService'
@@ -33,6 +34,7 @@ export function SalidaCanastillasModal({
   const [loading, setLoading] = useState(false)
   const [loadingLotes, setLoadingLotes] = useState(false)
   const [error, setError] = useState('')
+  const [showAuthGate, setShowAuthGate] = useState(false)
   const [lotes, setLotes] = useState<Lote[]>([])
   const [tipoSalida, setTipoSalida] = useState<'ALQUILADAS' | 'PROPIAS'>('ALQUILADAS')
   const [cantidades, setCantidades] = useState<Map<string, number>>(new Map())
@@ -63,6 +65,7 @@ export function SalidaCanastillasModal({
           .eq('tipo_propiedad', tipoPropiedad)
           .eq('status', 'DISPONIBLE')
           .order('color', { ascending: true })
+          .order('id', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
         if (user?.id) {
@@ -144,6 +147,11 @@ export function SalidaCanastillasModal({
       setError('Selecciona al menos una cantidad')
       return
     }
+    setShowAuthGate(true)
+  }
+
+  const handleAuthorizedSubmit = async () => {
+    setShowAuthGate(false)
 
     setLoading(true)
     setError('')
@@ -528,6 +536,14 @@ export function SalidaCanastillasModal({
           </div>
         </div>
       </div>
+
+      <AuthCodeGate
+        isOpen={showAuthGate}
+        onAuthorized={handleAuthorizedSubmit}
+        onCancel={() => setShowAuthGate(false)}
+        actionDescription={tipoSalida === 'ALQUILADAS' ? `Salida de ${getTotalSeleccionado()} canastilla(s)` : `Baja de ${getTotalSeleccionado()} canastilla(s)`}
+        loading={loading}
+      />
     </div>
   )
 }

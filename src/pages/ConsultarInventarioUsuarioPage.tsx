@@ -90,19 +90,44 @@ export function ConsultarInventarioUsuarioPage() {
       setLotes([])
       setAllCanastillas([])
     }
-  }, [selectedUserId])
+  }, [selectedUserId, users])
 
   const fetchUsers = async () => {
     try {
       setLoadingUsers(true)
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, email, first_name, last_name, phone, role, department, area, is_active, created_at')
-        .eq('is_active', true)
-        .order('first_name')
 
-      if (error) throw error
-      setUsers(data || [])
+      const [usersRes, salePointsRes] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, email, first_name, last_name, phone, role, department, area, is_active, created_at')
+          .eq('is_active', true)
+          .order('first_name'),
+        supabase
+          .from('sale_points')
+          .select('id, name, contact_name, contact_phone, address, city')
+          .eq('is_active', true)
+          .order('name'),
+      ])
+
+      if (usersRes.error) throw usersRes.error
+
+      const normalUsers = usersRes.data || []
+
+      // Crear pseudo-usuarios para clientes externos
+      const clientUsers: UserInfo[] = (salePointsRes.data || []).map(sp => ({
+        id: `client_${sp.id}`,
+        email: sp.contact_phone || 'Cliente externo',
+        first_name: '🏢',
+        last_name: sp.name,
+        phone: sp.contact_phone || null,
+        role: 'client',
+        department: sp.address || null,
+        area: sp.city || null,
+        is_active: true,
+        created_at: '',
+      }))
+
+      setUsers([...normalUsers, ...clientUsers])
     } catch (err) {
       console.error('Error fetching users:', err)
     } finally {
@@ -119,25 +144,98 @@ export function ConsultarInventarioUsuarioPage() {
     try {
       const PAGE_SIZE = 1000
       let canastillas: Canastilla[] = []
-      let hasMore = true
-      let offset = 0
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('canastillas')
-          .select('id, codigo, size, color, shape, status, condition, tipo_propiedad, current_location, current_owner_id')
-          .eq('current_owner_id', userId)
-          .order('color', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1)
+      const isClient = userId.startsWith('client_')
 
-        if (error) throw error
+      if (isClient) {
+        const salePointId = userId.replace('client_', '')
 
-        if (data && data.length > 0) {
-          canastillas = [...canastillas, ...data]
-          offset += PAGE_SIZE
-          hasMore = data.length === PAGE_SIZE
-        } else {
-          hasMore = false
+        // 1. Obtener nombre del cliente
+        const { data: sp } = await supabase
+          .from('sale_points')
+          .select('name')
+          .eq('id', salePointId)
+          .single()
+        const clientName = sp?.name || ''
+
+        // 2. Buscar por current_location (canastillas de alquiler)
+        let offset = 0
+        let hasMore = true
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('canastillas')
+            .select('id, codigo, size, color, shape, status, condition, tipo_propiedad, current_location, current_owner_id')
+            .eq('current_location', clientName)
+            .order('color', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + PAGE_SIZE - 1)
+          if (error) throw error
+          if (data && data.length > 0) {
+            canastillas = [...canastillas, ...data]
+            offset += PAGE_SIZE
+            hasMore = data.length === PAGE_SIZE
+          } else {
+            hasMore = false
+          }
+        }
+
+        // 3. Buscar por traspasos externos: obtener el usuario virtual del cliente
+        const { data: transfers } = await supabase
+          .from('transfers')
+          .select('to_user_id')
+          .eq('sale_point_id', salePointId)
+          .eq('is_external_transfer', true)
+          .not('to_user_id', 'is', null)
+
+        if (transfers && transfers.length > 0) {
+          const externalUserIds = [...new Set(transfers.map(t => t.to_user_id))]
+          for (const extUserId of externalUserIds) {
+            offset = 0
+            hasMore = true
+            while (hasMore) {
+              const { data, error } = await supabase
+                .from('canastillas')
+                .select('id, codigo, size, color, shape, status, condition, tipo_propiedad, current_location, current_owner_id')
+                .eq('current_owner_id', extUserId)
+                .order('color', { ascending: true })
+                .order('id', { ascending: true })
+                .range(offset, offset + PAGE_SIZE - 1)
+              if (error) throw error
+              if (data && data.length > 0) {
+                canastillas = [...canastillas, ...data]
+                offset += PAGE_SIZE
+                hasMore = data.length === PAGE_SIZE
+              } else {
+                hasMore = false
+              }
+            }
+          }
+        }
+
+        // Eliminar duplicados por id
+        const uniqueMap = new Map(canastillas.map(c => [c.id, c]))
+        canastillas = Array.from(uniqueMap.values())
+
+      } else {
+        // Usuario normal: buscar por current_owner_id
+        let offset = 0
+        let hasMore = true
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('canastillas')
+            .select('id, codigo, size, color, shape, status, condition, tipo_propiedad, current_location, current_owner_id')
+            .eq('current_owner_id', userId)
+            .order('color', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + PAGE_SIZE - 1)
+          if (error) throw error
+          if (data && data.length > 0) {
+            canastillas = [...canastillas, ...data]
+            offset += PAGE_SIZE
+            hasMore = data.length === PAGE_SIZE
+          } else {
+            hasMore = false
+          }
         }
       }
 

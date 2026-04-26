@@ -234,23 +234,55 @@ export function UsuariosPage() {
       subtitle="Gestión de usuarios del sistema"
     >
       <div className="space-y-6">
+        {/* Stat Cards con gradientes */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700 p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium text-white/80">Total</p><p className="text-2xl font-bold mt-1">{users.length}</p></div>
+              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-600 dark:to-emerald-700 p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium text-white/80">Activos</p><p className="text-2xl font-bold mt-1">{users.filter(u => u.is_active).length}</p></div>
+              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-red-500 to-red-600 dark:from-red-600 dark:to-red-700 p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium text-white/80">Inactivos</p><p className="text-2xl font-bold mt-1">{users.filter(u => !u.is_active).length}</p></div>
+              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg></div>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 dark:from-purple-600 dark:to-purple-700 p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium text-white/80">Admins</p><p className="text-2xl font-bold mt-1">{users.filter(u => u.role === 'super_admin' || u.role === 'admin').length}</p></div>
+              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg></div>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 dark:from-amber-600 dark:to-amber-700 p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium text-white/80">Sin Ubicación</p><p className="text-2xl font-bold mt-1">{users.filter(u => !u.department).length}</p></div>
+              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+            </div>
+          </div>
+        </div>
+
         {/* Header con filtros y botón crear */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
             {/* Buscador */}
-            <div className="flex-1 min-w-[250px]">
+            <div className="sm:col-span-2">
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
                 <input
                   type="text"
                   placeholder="Buscar por nombre, email o teléfono..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="pl-10 w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
                 />
               </div>
             </div>
@@ -259,7 +291,7 @@ export function UsuariosPage() {
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-shadow"
             >
               <option value="all">Todos los roles</option>
               {Object.entries(ROLE_LABELS).map(([value, label]) => (
@@ -271,7 +303,7 @@ export function UsuariosPage() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-shadow"
             >
               <option value="all">Todos los estados</option>
               <option value="active">Activos</option>
@@ -288,65 +320,67 @@ export function UsuariosPage() {
           </div>
 
           {/* Contador */}
-          <div className="mt-4 text-sm text-gray-600">
-            Mostrando {filteredUsers.length} de {users.length} usuarios
+          <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+            Mostrando <span className="font-semibold text-gray-700 dark:text-gray-200">{filteredUsers.length}</span> de {users.length} usuarios
           </div>
         </div>
 
         {/* Tabla de usuarios */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="p-12 text-center">
-              <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              <p className="text-lg font-medium text-gray-900">No se encontraron usuarios</p>
-              <p className="text-sm text-gray-500 mt-1">Intenta ajustar los filtros de búsqueda</p>
+            <div className="p-16 text-center">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">No se encontraron usuarios</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Intenta ajustar los filtros de búsqueda</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Usuario
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Rol
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Ubicación / Área
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Contacto
                     </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Estado
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Acciones
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
+                    <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10 bg-primary-100 rounded-full flex items-center justify-center">
-                            <span className="text-primary-600 font-semibold">
+                          <div className="flex-shrink-0 h-10 w-10 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                            <span className="text-primary-600 dark:text-primary-400 font-semibold">
                               {user.first_name?.charAt(0) || user.email.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
                               {user.first_name} {user.last_name}
                             </div>
-                            <div className="text-sm text-gray-500">{user.email}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
                           </div>
                         </div>
                       </td>
@@ -368,63 +402,67 @@ export function UsuariosPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         {user.department ? (
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{user.department}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{user.department}</div>
                             {user.area && (
-                              <div className="text-xs text-gray-500">{user.area}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{user.area}</div>
                             )}
                           </div>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
                             Sin ubicación
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{user.phone || 'Sin teléfono'}</div>
+                        <div className="text-sm text-gray-900 dark:text-white">{user.phone || 'Sin teléfono'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full ${
                           user.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' 
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                         }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`}></span>
                           {user.is_active ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                        <button
-                          onClick={() => handleEditUser(user)}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleOpenPasswordModal(user)}
-                          disabled={user.id === currentUser?.id}
-                          className={`text-indigo-600 hover:text-indigo-900 ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          Contraseña
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(user.id, user.is_active)}
-                          disabled={user.id === currentUser?.id}
-                          className={`${
-                            user.is_active
-                              ? 'text-red-600 hover:text-red-900'
-                              : 'text-green-600 hover:text-green-900'
-                          } ${
-                            user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          {user.is_active ? 'Desactivar' : 'Activar'}
-                        </button>
-                        <button
-                          onClick={() => handleOpenDeleteModal(user)}
-                          disabled={user.id === currentUser?.id}
-                          className={`text-red-600 hover:text-red-900 font-semibold ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          Eliminar
-                        </button>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleEditUser(user)}
+                            className="px-2.5 py-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleOpenPasswordModal(user)}
+                            disabled={user.id === currentUser?.id}
+                            className={`px-2.5 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            Contraseña
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(user.id, user.is_active)}
+                            disabled={user.id === currentUser?.id}
+                            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                              user.is_active
+                                ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                            } ${
+                              user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            {user.is_active ? 'Desactivar' : 'Activar'}
+                          </button>
+                          <button
+                            onClick={() => handleOpenDeleteModal(user)}
+                            disabled={user.id === currentUser?.id}
+                            className={`px-2.5 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors ${user.id === currentUser?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -432,60 +470,6 @@ export function UsuariosPage() {
               </table>
             </div>
           )}
-        </div>
-
-        {/* Estadísticas */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">Total Usuarios</span>
-              <span className="text-2xl">👥</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{users.length}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-green-100 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-green-600">Activos</span>
-              <span className="text-2xl">✅</span>
-            </div>
-            <p className="text-2xl font-bold text-green-600">
-              {users.filter(u => u.is_active).length}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-red-100 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-red-600">Inactivos</span>
-              <span className="text-2xl">⛔</span>
-            </div>
-            <p className="text-2xl font-bold text-red-600">
-              {users.filter(u => !u.is_active).length}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-blue-600">Admins</span>
-              <span className="text-2xl">👑</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-600">
-              {users.filter(u => u.role === 'super_admin' || u.role === 'admin').length}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-amber-600">Sin Ubicación</span>
-              <span className="text-2xl">📍</span>
-            </div>
-            <p className="text-2xl font-bold text-amber-600">
-              {users.filter(u => !u.department).length}
-            </p>
-            {users.filter(u => !u.department).length > 0 && (
-              <p className="text-xs text-amber-500 mt-1">Requieren edición</p>
-            )}
-          </div>
         </div>
       </div>
 

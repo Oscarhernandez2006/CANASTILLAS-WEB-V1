@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { Input } from './Input'
 import { DynamicSelect } from './DynamicSelect'
+import { AuthCodeGate } from './AuthCodeGate'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
@@ -20,6 +21,7 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
   const { user } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showAuthGate, setShowAuthGate] = useState(false)
 
   // Cargar atributos dinámicos
   const colores = useCanastillaAttributes('COLOR')
@@ -75,8 +77,13 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
     }
   }, [canastilla, isOpen])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setShowAuthGate(true)
+  }
+
+  const handleAuthorizedSubmit = async () => {
+    setShowAuthGate(false)
     setError('')
     setLoading(true)
 
@@ -361,6 +368,14 @@ export function CanastillaModal({ isOpen, onClose, onSuccess, canastilla }: Cana
           </form>
         </div>
       </div>
+
+      <AuthCodeGate
+        isOpen={showAuthGate}
+        onAuthorized={handleAuthorizedSubmit}
+        onCancel={() => setShowAuthGate(false)}
+        actionDescription={canastilla ? `Editar canastilla ${formData.codigo}` : `Crear canastilla ${formData.codigo}`}
+        loading={loading}
+      />
     </div>
   )
 }

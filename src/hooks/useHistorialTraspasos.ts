@@ -24,7 +24,7 @@ export interface HistorialTransfer {
   id: string
   from_user_id: string
   to_user_id: string
-  status: 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO' | 'CANCELADO'
+  status: 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO' | 'CANCELADO' | 'EXPIRADA' | 'ACEPTADO_AUTO'
   requested_at: string
   responded_at?: string
   remision_number?: string
@@ -54,6 +54,8 @@ export interface StatusCounts {
   ACEPTADO: number
   RECHAZADO: number
   CANCELADO: number
+  EXPIRADA: number
+  ACEPTADO_AUTO: number
   total: number
 }
 
@@ -75,8 +77,8 @@ export function useHistorialTraspasos() {
 
   // Fetch real counts per status from DB
   const fetchStatusCounts = useCallback(async () => {
-    const statuses = ['PENDIENTE', 'ACEPTADO', 'RECHAZADO', 'CANCELADO'] as const
-    const counts: StatusCounts = { PENDIENTE: 0, ACEPTADO: 0, RECHAZADO: 0, CANCELADO: 0, total: 0 }
+    const statuses = ['PENDIENTE', 'ACEPTADO', 'RECHAZADO', 'CANCELADO', 'EXPIRADA', 'ACEPTADO_AUTO'] as const
+    const counts: StatusCounts = { PENDIENTE: 0, ACEPTADO: 0, RECHAZADO: 0, CANCELADO: 0, EXPIRADA: 0, ACEPTADO_AUTO: 0, total: 0 }
 
     await Promise.all(
       statuses.map(async (s) => {
@@ -87,7 +89,7 @@ export function useHistorialTraspasos() {
         counts[s] = count || 0
       })
     )
-    counts.total = counts.PENDIENTE + counts.ACEPTADO + counts.RECHAZADO + counts.CANCELADO
+    counts.total = counts.PENDIENTE + counts.ACEPTADO + counts.RECHAZADO + counts.CANCELADO + counts.EXPIRADA + counts.ACEPTADO_AUTO
     setStatusCounts(counts)
   }, [])
 

@@ -12,7 +12,7 @@ interface SidebarProps {
 
 const groupRoutes: Record<string, string[]> = {
   operacion: ['/inventario', '/canastillas', '/traspasos', '/cargue-pdv', '/control-pdv', '/trazabilidad', '/rutas', '/mi-ruta'],
-  facturacion: ['/alquileres', '/facturacion', '/consultar-facturacion'],
+  facturacion: ['/alquileres', '/facturacion', '/consultar-facturacion', '/facturas-perdida'],
   admin: ['/clientes', '/usuarios', '/permisos', '/auditoria', '/adicion-inventario', '/consultar-inventario-usuario', '/historial-traspasos'],
 }
 
@@ -87,7 +87,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     permissions.canAccessTraspasos() && 'traspasos',
     permissions.canAccessCarguePdv() && 'cargue-pdv',
     permissions.canAccessControlPdv() && 'control-pdv',
-    user?.role === 'super_admin' && 'trazabilidad',
+    permissions.canAccessTrazabilidad() && 'trazabilidad',
     permissions.canAccessRutas() && 'rutas',
   ].filter(Boolean)
 
@@ -95,16 +95,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     permissions.canAccessAlquileres() && 'alquileres',
     permissions.canAccessFacturacion() && 'facturacion',
     permissions.canAccessConsultarFacturacion() && 'consultar-facturacion',
+    permissions.canAccessFacturasPerdida() && 'facturas-perdida',
   ].filter(Boolean)
 
   const adminItems = [
     permissions.canAccessClientes() && 'clientes',
     permissions.canAccessUsuarios() && 'usuarios',
-    user?.role === 'super_admin' && 'permisos',
+    permissions.canAccessPermisos() && 'permisos',
     permissions.canAccessAuditoria() && 'auditoria',
-    user?.role === 'super_admin' && 'adicion-inventario',
-    user?.role === 'super_admin' && 'consultar-inventario-usuario',
-    user?.role === 'super_admin' && 'historial-traspasos',
+    permissions.canAccessAdicionInventario() && 'adicion-inventario',
+    permissions.canAccessConsultarInventarioUsuario() && 'consultar-inventario-usuario',
+    permissions.canAccessHistorialTraspasos() && 'historial-traspasos',
   ].filter(Boolean)
 
   const isDriver = user?.role === 'conductor'
@@ -185,7 +186,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>Control PDV</span>
                 </Link>
               )}
-              {user?.role === 'super_admin' && (
+              {permissions.canAccessTrazabilidad() && (
                 <Link to="/trazabilidad" onClick={handleLinkClick} className={linkClass('/trazabilidad')}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -211,7 +212,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div>
           <button
             onClick={() => toggleGroup('facturacion')}
-            className={groupHeaderClass('facturacion', ['/alquileres', '/facturacion', '/consultar-facturacion'])}
+            className={groupHeaderClass('facturacion', ['/alquileres', '/facturacion', '/consultar-facturacion', '/facturas-perdida'])}
           >
             <div className="flex items-center space-x-3">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,6 +246,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                   </svg>
                   <span>Consultar Fact.</span>
+                </Link>
+              )}
+              {permissions.canAccessFacturacion() && (
+                <Link to="/facturas-perdida" onClick={handleLinkClick} className={linkClass('/facturas-perdida')}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Emitir Fact.</span>
                 </Link>
               )}
             </div>
@@ -285,7 +294,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>Usuarios</span>
                 </Link>
               )}
-              {user?.role === 'super_admin' && (
+              {permissions.canAccessPermisos() && (
                 <Link to="/permisos" onClick={handleLinkClick} className={linkClass('/permisos')}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -301,7 +310,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>Auditoría</span>
                 </Link>
               )}
-              {user?.role === 'super_admin' && (
+              {permissions.canAccessAdicionInventario() && (
                 <Link to="/adicion-inventario" onClick={handleLinkClick} className={linkClass('/adicion-inventario')}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -309,7 +318,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>Adición Inventario</span>
                 </Link>
               )}
-              {user?.role === 'super_admin' && (
+              {permissions.canAccessConsultarInventarioUsuario() && (
                 <Link to="/consultar-inventario-usuario" onClick={handleLinkClick} className={linkClass('/consultar-inventario-usuario')}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
@@ -317,7 +326,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>Inventario por Usuario</span>
                 </Link>
               )}
-              {user?.role === 'super_admin' && (
+              {permissions.canAccessHistorialTraspasos() && (
                 <Link to="/historial-traspasos" onClick={handleLinkClick} className={linkClass('/historial-traspasos')}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />

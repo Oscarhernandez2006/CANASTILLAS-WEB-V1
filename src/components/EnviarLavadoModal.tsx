@@ -69,13 +69,26 @@ export function EnviarLavadoModal({
 
       if (traspasosPendientes && traspasosPendientes.length > 0) {
         const transferIds = traspasosPendientes.map(t => t.id)
-        const { data: itemsRetenidos } = await supabase
-          .from('transfer_items')
-          .select('canastilla_id')
-          .in('transfer_id', transferIds)
 
-        if (itemsRetenidos) {
-          canastillasEnTraspaso = itemsRetenidos.map(item => item.canastilla_id)
+        // Paginar resultados (Supabase limita a 1000 filas por query)
+        let itemOffset = 0
+        let hasMoreItems = true
+        const ITEMS_PAGE = 1000
+
+        while (hasMoreItems) {
+          const { data: itemsRetenidos } = await supabase
+            .from('transfer_items')
+            .select('canastilla_id')
+            .in('transfer_id', transferIds)
+            .range(itemOffset, itemOffset + ITEMS_PAGE - 1)
+
+          if (itemsRetenidos && itemsRetenidos.length > 0) {
+            canastillasEnTraspaso = [...canastillasEnTraspaso, ...itemsRetenidos.map(item => item.canastilla_id)]
+            itemOffset += ITEMS_PAGE
+            hasMoreItems = itemsRetenidos.length === ITEMS_PAGE
+          } else {
+            hasMoreItems = false
+          }
         }
       }
 
@@ -90,13 +103,25 @@ export function EnviarLavadoModal({
 
       if (lavadosPendientes && lavadosPendientes.length > 0) {
         const washingIds = lavadosPendientes.map(w => w.id)
-        const { data: itemsLavado } = await supabase
-          .from('washing_order_items')
-          .select('canastilla_id')
-          .in('washing_order_id', washingIds)
 
-        if (itemsLavado) {
-          canastillasEnLavado = itemsLavado.map(item => item.canastilla_id)
+        let itemOffset = 0
+        let hasMoreItems = true
+        const ITEMS_PAGE = 1000
+
+        while (hasMoreItems) {
+          const { data: itemsLavado } = await supabase
+            .from('washing_order_items')
+            .select('canastilla_id')
+            .in('washing_order_id', washingIds)
+            .range(itemOffset, itemOffset + ITEMS_PAGE - 1)
+
+          if (itemsLavado && itemsLavado.length > 0) {
+            canastillasEnLavado = [...canastillasEnLavado, ...itemsLavado.map(item => item.canastilla_id)]
+            itemOffset += ITEMS_PAGE
+            hasMoreItems = itemsLavado.length === ITEMS_PAGE
+          } else {
+            hasMoreItems = false
+          }
         }
       }
 

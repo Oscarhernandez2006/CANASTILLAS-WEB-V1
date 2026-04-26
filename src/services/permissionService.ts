@@ -153,6 +153,49 @@ export const PERMISSIONS_CONFIG: Record<PermissionModule, {
       { key: 'rutas.ver_seguimiento', label: 'Ver Seguimiento', description: 'Ver el seguimiento en tiempo real de las rutas' },
     ],
   },
+  trazabilidad: {
+    label: 'Trazabilidad',
+    permissions: [
+      { key: 'trazabilidad.ver', label: 'Ver Trazabilidad', description: 'Acceder al módulo de trazabilidad de canastillas' },
+      { key: 'trazabilidad.buscar', label: 'Buscar Canastillas', description: 'Buscar canastillas por código o QR' },
+      { key: 'trazabilidad.ver_historial', label: 'Ver Historial', description: 'Ver el historial completo de movimientos de canastillas' },
+    ],
+  },
+  permisos: {
+    label: 'Permisos',
+    permissions: [
+      { key: 'permisos.ver', label: 'Ver Permisos', description: 'Acceder al módulo de gestión de permisos' },
+      { key: 'permisos.editar', label: 'Editar Permisos', description: 'Modificar los permisos de usuarios' },
+    ],
+  },
+  adicion_inventario: {
+    label: 'Adición Inventario',
+    permissions: [
+      { key: 'adicion_inventario.ver', label: 'Ver Adición Inventario', description: 'Acceder al módulo de adición de inventario' },
+      { key: 'adicion_inventario.agregar', label: 'Agregar al Inventario', description: 'Agregar nuevas canastillas al inventario del sistema' },
+    ],
+  },
+  consultar_inventario_usuario: {
+    label: 'Inventario por Usuario',
+    permissions: [
+      { key: 'consultar_inventario_usuario.ver', label: 'Ver Inventario por Usuario', description: 'Consultar el inventario de canastillas por usuario o cliente' },
+    ],
+  },
+  historial_traspasos: {
+    label: 'Historial de Traspasos',
+    permissions: [
+      { key: 'historial_traspasos.ver', label: 'Ver Historial', description: 'Consultar el historial general de traspasos' },
+      { key: 'historial_traspasos.exportar', label: 'Exportar Historial', description: 'Exportar historial de traspasos' },
+    ],
+  },
+  facturas_perdida: {
+    label: 'Emitir Factura',
+    permissions: [
+      { key: 'facturas_perdida.ver', label: 'Ver Facturas', description: 'Acceder al módulo de emisión de facturas' },
+      { key: 'facturas_perdida.emitir', label: 'Emitir Factura', description: 'Emitir facturas por canastillas perdidas' },
+      { key: 'facturas_perdida.cancelar', label: 'Cancelar Factura', description: 'Cancelar facturas emitidas' },
+    ],
+  },
 }
 
 /** Lista ordenada de todos los módulos del sistema */
@@ -172,6 +215,12 @@ export const ALL_MODULES: PermissionModule[] = [
   'control_pdv',
   'auditoria',
   'rutas',
+  'trazabilidad',
+  'permisos',
+  'adicion_inventario',
+  'consultar_inventario_usuario',
+  'historial_traspasos',
+  'facturas_perdida',
 ]
 
 /** Array plano con todas las claves de permisos del sistema, derivado de PERMISSIONS_CONFIG */

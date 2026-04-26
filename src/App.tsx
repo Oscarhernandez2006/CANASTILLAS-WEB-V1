@@ -35,6 +35,7 @@ import { MiRutaPage } from './pages/MiRutaPage'
 import { AdicionInventarioPage } from './pages/AdicionInventarioPage'
 import { ConsultarInventarioUsuarioPage } from './pages/ConsultarInventarioUsuarioPage'
 import { HistorialTraspasosPage } from './pages/HistorialTraspasosPage'
+import { FacturasPerdidaPage } from './pages/FacturasPerdidaPage'
 import { ReloadPrompt } from './components/ReloadPrompt'
 
 // Componente para rutas protegidas
@@ -192,6 +193,15 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/facturas-perdida"
+          element={
+            <ProtectedRoute requirePermission={permissions.canAccessFacturasPerdida}>
+              <FacturasPerdidaPage />
+            </ProtectedRoute>
+          }
+        />
         
         <Route
           path="/usuarios"
@@ -214,7 +224,7 @@ function AppRoutes() {
         <Route
           path="/permisos"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requirePermission={permissions.canAccessPermisos}>
               <PermisosPage />
             </ProtectedRoute>
           }
@@ -223,7 +233,7 @@ function AppRoutes() {
         <Route
           path="/trazabilidad"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requirePermission={permissions.canAccessTrazabilidad}>
               <TrazabilidadPage />
             </ProtectedRoute>
           }
@@ -277,7 +287,7 @@ function AppRoutes() {
         <Route
           path="/adicion-inventario"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requirePermission={permissions.canAccessAdicionInventario}>
               <AdicionInventarioPage />
             </ProtectedRoute>
           }
@@ -286,7 +296,7 @@ function AppRoutes() {
         <Route
           path="/consultar-inventario-usuario"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requirePermission={permissions.canAccessConsultarInventarioUsuario}>
               <ConsultarInventarioUsuarioPage />
             </ProtectedRoute>
           }
@@ -295,7 +305,7 @@ function AppRoutes() {
         <Route
           path="/historial-traspasos"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requirePermission={permissions.canAccessHistorialTraspasos}>
               <HistorialTraspasosPage />
             </ProtectedRoute>
           }

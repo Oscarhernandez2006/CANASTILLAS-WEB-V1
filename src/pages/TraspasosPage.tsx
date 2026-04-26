@@ -2,13 +2,14 @@
  * @module TraspasosPage
  * @description Módulo de traspasos: solicitar, aceptar/rechazar, historial, firma digital.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { Button } from '@/components/Button'
 import { FirmaDigitalModal } from '@/components/FirmaDigitalModal'
 import { SolicitarTraspasoModal } from '@/components/SolicitarTraspasoModal'
 import { DevolucionTraspasoModal } from '@/components/DevolucionTraspasoModal'
 import { AsignarRecogidaModal } from '@/components/AsignarRecogidaModal'
+import { RecogidaConductorModal } from '@/components/RecogidaConductorModal'
 import { useTraspasos } from '@/hooks/useTraspasos'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
@@ -30,6 +31,9 @@ export function TraspasosPage() {
   const [selectedTransferForReturn, setSelectedTransferForReturn] = useState<Transfer | null>(null)
   const [showAsignarRecogidaModal, setShowAsignarRecogidaModal] = useState(false)
   const [selectedTransferForPickup, setSelectedTransferForPickup] = useState<Transfer | null>(null)
+  const [showRecogidaConductorModal, setShowRecogidaConductorModal] = useState(false)
+  const [historialRecogidas, setHistorialRecogidas] = useState<any[]>([])
+  const [loadingRecogidas, setLoadingRecogidas] = useState(false)
   const [processingMessage, setProcessingMessage] = useState<string | null>(null)
   const [showMotivoModal, setShowMotivoModal] = useState(false)
   const [motivoAccion, setMotivoAccion] = useState<'rechazar' | 'cancelar'>('rechazar')
@@ -58,6 +62,30 @@ export function TraspasosPage() {
     'Solicitud creada por error',
   ]
 
+  // Timer para actualizar el tiempo restante cada 30 segundos
+  const [, setTimerTick] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => setTimerTick(t => t + 1), 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const EXPIRATION_MINUTES = 420
+
+  /** Calcula tiempo restante antes de la auto-aceptación */
+  const getTimeRemaining = useCallback((requestedAt: string): { minutes: number; autoAccepted: boolean; label: string } => {
+    const requested = new Date(requestedAt).getTime()
+    const expiresAt = requested + EXPIRATION_MINUTES * 60 * 1000
+    const remaining = expiresAt - Date.now()
+    const minutes = Math.max(0, Math.ceil(remaining / 60000))
+    const autoAccepted = remaining <= 0
+
+    if (autoAccepted) return { minutes: 0, autoAccepted: true, label: 'Aceptado automático' }
+    if (minutes <= 30) return { minutes, autoAccepted: false, label: `${minutes} min para auto-aceptación` }
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return { minutes, autoAccepted: false, label: `Auto-aceptación en ${hours}h ${mins}m` }
+  }, [])
+
   const { user } = useAuthStore()
   const {
     solicitudesRecibidas,
@@ -74,11 +102,59 @@ export function TraspasosPage() {
     if (activeTab === 'devoluciones-externas' && user?.role !== 'super_admin' && user?.role !== 'conductor') {
       setActiveTab('solicitudes-recibidas')
     }
+    if (activeTab === 'devoluciones-externas') {
+      fetchHistorialRecogidas()
+    }
   }, [activeTab, user?.role])
+
+  const fetchHistorialRecogidas = async () => {
+    setLoadingRecogidas(true)
+    try {
+      let query = supabase
+        .from('conductor_pickups')
+        .select(`
+          id,
+          conductor_id,
+          client_name,
+          client_address,
+          items_count,
+          remision_number,
+          created_at,
+          conductor:users!conductor_pickups_conductor_id_fkey(first_name, last_name),
+          sale_point:sale_points(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      // Conductores solo ven sus propias recogidas
+      if (user?.role === 'conductor') {
+        query = query.eq('conductor_id', user.id)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      setHistorialRecogidas(data || [])
+    } catch (err) {
+      console.error('Error fetching historial recogidas:', err)
+    } finally {
+      setLoadingRecogidas(false)
+    }
+  }
 
   const showFourthTab = user?.role === 'super_admin' || user?.role === 'conductor'
 
   const handleFirmarYAceptar = async (id: string) => {
+    // Verificar auto-aceptación antes de abrir el modal de firma
+    const solicitud = solicitudesRecibidas.find(s => s.id === id)
+    if (solicitud) {
+      const timeInfo = getTimeRemaining(solicitud.requested_at)
+      if (timeInfo.autoAccepted) {
+        alert('Esta solicitud ya fue aceptada automáticamente. Las canastillas ya viajaron al destinatario. Actualiza la página.')
+        refreshTraspasos()
+        return
+      }
+    }
+
     setProcessingMessage('Cargando datos del traspaso...')
     try {
       // Obtener datos del transfer incluyendo firma del remitente
@@ -112,53 +188,42 @@ export function TraspasosPage() {
       const transfer = selectedTransferForApproval
       if (!transfer) throw new Error('No se encontró el traspaso')
 
-      const now = new Date().toISOString()
       const isWashingTransfer = transfer.is_washing_transfer || false
+      const newLocation = transfer.to_user?.department || null
+      const newArea = transfer.to_user?.area || null
 
-      // 0. Verificar que el traspaso siga en estado PENDIENTE (protección contra race condition)
-      const { data: currentTransfer, error: checkError } = await supabase
-        .from('transfers')
-        .select('status')
-        .eq('id', transfer.id)
-        .single()
+      // ============================================================
+      // TRANSACCIÓN ATÓMICA: Validar + Mover canastillas + Aceptar
+      // Todo ocurre en una sola transacción de base de datos.
+      // Si algo falla, se hace rollback automático.
+      // ============================================================
+      setProcessingMessage('Validando y moviendo canastillas (transacción atómica)...')
+      
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_transfer_atomic', {
+        p_transfer_id: transfer.id,
+        p_user_id: user!.id,
+        p_firma_recibe_base64: signatureData.firma_recibe_base64 || null,
+        p_firma_recibe_nombre: signatureData.firma_recibe_nombre || null,
+        p_firma_recibe_cedula: signatureData.firma_recibe_cedula || null,
+        p_firma_tercero_base64: signatureData.firma_tercero_base64 || null,
+        p_firma_tercero_nombre: signatureData.firma_tercero_nombre || null,
+        p_firma_tercero_cedula: signatureData.firma_tercero_cedula || null,
+        p_is_washing_transfer: isWashingTransfer,
+        p_new_location: newLocation,
+        p_new_area: newArea,
+      })
 
-      if (checkError) throw checkError
+      if (rpcError) throw rpcError
 
-      if (currentTransfer.status !== 'PENDIENTE') {
-        const statusLabels: Record<string, string> = { ACEPTADO: 'aceptado', RECHAZADO: 'rechazado', CANCELADO: 'cancelado' }
-        throw new Error(`Este traspaso ya fue ${statusLabels[currentTransfer.status] || currentTransfer.status.toLowerCase()} por otro usuario. Por favor actualiza la página.`)
+      if (!rpcResult || !rpcResult.success) {
+        const errorMsg = rpcResult?.error || 'Error desconocido al procesar el traspaso'
+        throw new Error(errorMsg)
       }
 
-      // 1. Actualizar estado a ACEPTADO + guardar firma del receptor
-      const updateData: Record<string, any> = {
-          status: 'ACEPTADO',
-          responded_at: now,
-          firma_recibe_base64: signatureData.firma_recibe_base64,
-          firma_recibe_nombre: signatureData.firma_recibe_nombre,
-          firma_recibe_cedula: signatureData.firma_recibe_cedula,
-        }
+      const totalMoved = rpcResult.total_moved || 0
 
-      // Agregar firma de tercero si existe (puede venir nueva o ya estar en el transfer)
-      if (signatureData.firma_tercero_base64) {
-        updateData.firma_tercero_base64 = signatureData.firma_tercero_base64
-        updateData.firma_tercero_nombre = signatureData.firma_tercero_nombre
-        updateData.firma_tercero_cedula = signatureData.firma_tercero_cedula
-      }
-
-      const { data: updateResult, error } = await supabase
-        .from('transfers')
-        .update(updateData)
-        .eq('id', transfer.id)
-        .eq('status', 'PENDIENTE')
-        .select('id')
-
-      if (error) throw error
-
-      if (!updateResult || updateResult.length === 0) {
-        throw new Error('No se pudo aceptar el traspaso porque su estado cambió. Otro usuario ya lo procesó. Por favor actualiza la página.')
-      }
-
-      // 2. Obtener todos los transfer_items con paginación
+      // Obtener transfer_items para el PDF (lectura, no modifica nada)
+      setProcessingMessage('Generando remisión firmada...')
       const PAGE_SIZE_ITEMS = 1000
       let allTransferItems: any[] = []
       let hasMoreItems = true
@@ -182,56 +247,7 @@ export function TraspasosPage() {
         }
       }
 
-      const canastillaIds = allTransferItems.map((item: any) => item.canastilla_id)
-
-      // 3. Mover canastillas al nuevo dueño
-      // Las canastillas EN_ALQUILER mantienen su status (cadena de custodia)
-      setProcessingMessage(`Moviendo ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''}...`)
-      const newLocation = transfer.to_user?.department || null
-      const newArea = transfer.to_user?.area || null
-
-      // Separar canastillas por status actual para manejarlas correctamente
-      const enAlquilerIds = allTransferItems
-        .filter((item: any) => item.canastilla?.status === 'EN_ALQUILER')
-        .map((item: any) => item.canastilla_id)
-      const otrasIds = canastillaIds.filter((id: string) => !enAlquilerIds.includes(id))
-
-      const newStatus = isWashingTransfer ? 'EN_LAVADO' : 'DISPONIBLE'
-
-      // Actualizar canastillas normales (cambian a DISPONIBLE o EN_LAVADO)
-      const BATCH_SIZE = 500
-      for (let i = 0; i < otrasIds.length; i += BATCH_SIZE) {
-        const batch = otrasIds.slice(i, i + BATCH_SIZE)
-        const { error: updateError } = await supabase
-          .from('canastillas')
-          .update({
-            current_owner_id: transfer.to_user_id,
-            status: newStatus,
-            current_location: newLocation,
-            current_area: newArea
-          })
-          .in('id', batch)
-
-        if (updateError) throw updateError
-      }
-
-      // Actualizar canastillas EN_ALQUILER (solo cambiar dueño, mantener EN_ALQUILER)
-      for (let i = 0; i < enAlquilerIds.length; i += BATCH_SIZE) {
-        const batch = enAlquilerIds.slice(i, i + BATCH_SIZE)
-        const { error: updateError } = await supabase
-          .from('canastillas')
-          .update({
-            current_owner_id: transfer.to_user_id,
-            current_location: newLocation,
-            current_area: newArea
-          })
-          .in('id', batch)
-
-        if (updateError) throw updateError
-      }
-
-      // 4. Combinar ambas firmas para el PDF final
-      setProcessingMessage('Generando remisión firmada...')
+      // Combinar firmas para el PDF final
       const fullSignatureData: SignatureData = {
         firma_entrega_base64: transfer.firma_entrega_base64 || '',
         firma_entrega_nombre: transfer.firma_entrega_nombre || '',
@@ -249,7 +265,7 @@ export function TraspasosPage() {
         transfer_items: allTransferItems
       } as unknown as Transfer
 
-      // 5. Generar PDF con ambas firmas y subir a storage
+      // Generar PDF con ambas firmas y subir a storage
       try {
         const pdfBlob = await getRemisionTraspasoPDFBlob(fullTransfer, fullSignatureData)
         const pdfUrl = await uploadSignedPDF(
@@ -268,10 +284,10 @@ export function TraspasosPage() {
         console.error('Error al subir PDF firmado:', pdfErr)
       }
 
-      // 6. Abrir PDF con ambas firmas
+      // Abrir PDF con ambas firmas
       await openRemisionTraspasoPDF(fullTransfer, fullSignatureData)
 
-      // 7. Notificar al remitente que su traspaso fue aceptado
+      // Notificar al remitente que su traspaso fue aceptado
       try {
         const receiverName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
         await supabase
@@ -280,7 +296,7 @@ export function TraspasosPage() {
             user_id: transfer.from_user_id,
             type: isWashingTransfer ? 'LAVADO_ACEPTADO' : 'TRASPASO_ACEPTADO',
             title: isWashingTransfer ? 'Lavado aceptado' : 'Traspaso aceptado',
-            message: `${receiverName} ha aceptado tu ${isWashingTransfer ? 'envío de lavado' : 'solicitud de traspaso'} de ${canastillaIds.length} canastilla${canastillaIds.length !== 1 ? 's' : ''}. Remisión: ${transfer.remision_number || 'N/A'}`,
+            message: `${receiverName} ha aceptado tu ${isWashingTransfer ? 'envío de lavado' : 'solicitud de traspaso'} de ${totalMoved} canastilla${totalMoved !== 1 ? 's' : ''}. Remisión: ${transfer.remision_number || 'N/A'}`,
             related_id: transfer.id
           }])
       } catch (notifErr) {
@@ -298,8 +314,8 @@ export function TraspasosPage() {
         userRole: user?.role,
         action: 'UPDATE',
         module: 'traspasos',
-        description: `Traspaso aceptado - ${canastillaIds.length} canastilla(s). Remisión: ${transfer.remision_number || 'N/A'}`,
-        details: { transfer_id: transfer.id, remision: transfer.remision_number, cantidad: canastillaIds.length, tipo: isWashingTransfer ? 'lavado' : 'normal' },
+        description: `Traspaso aceptado (transacción atómica) - ${totalMoved} canastilla(s). Remisión: ${transfer.remision_number || 'N/A'}`,
+        details: { transfer_id: transfer.id, remision: transfer.remision_number, cantidad: totalMoved, tipo: isWashingTransfer ? 'lavado' : 'normal' },
       })
 
       setSelectedTransferForApproval(null)
@@ -645,10 +661,12 @@ export function TraspasosPage() {
       ACEPTADO: { bg: 'bg-green-100', text: 'text-green-800', label: 'Aceptado' },
       RECHAZADO: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rechazado' },
       CANCELADO: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Cancelado' },
+      EXPIRADA: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Expirada' },
+      ACEPTADO_AUTO: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Aceptado Automático' },
     }
 
     // Para traspasos externos aceptados, mostrar estado de devolución
-    if (status === 'ACEPTADO' && transfer?.is_external_transfer) {
+    if ((status === 'ACEPTADO' || status === 'ACEPTADO_AUTO') && transfer?.is_external_transfer) {
       const returned = transfer.returned_items_count || 0
       const pending = transfer.pending_items_count ?? (transfer.items_count || 0)
 
@@ -713,14 +731,14 @@ export function TraspasosPage() {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 p-2">
           <div className={`grid grid-cols-2 ${showFourthTab ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-1 sm:gap-2`}>
             <button
               onClick={() => setActiveTab('solicitudes-recibidas')}
-              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
+              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 relative ${
                 activeTab === 'solicitudes-recibidas'
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-500/25'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               <span className="hidden sm:inline">📥 </span>Recibidas
@@ -732,56 +750,34 @@ export function TraspasosPage() {
             </button>
             <button
               onClick={() => setActiveTab('solicitudes-enviadas')}
-              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${
                 activeTab === 'solicitudes-enviadas'
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-500/25'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               <span className="hidden sm:inline">📤 </span>Enviadas
             </button>
             <button
               onClick={() => setActiveTab('historial')}
-              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-2 sm:py-3 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${
                 activeTab === 'historial'
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-500/25'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               <span className="hidden sm:inline">📋 </span>Historial
             </button>
-            {user?.role === 'super_admin' && (
+            {(user?.role === 'super_admin' || user?.role === 'conductor') && (
               <button
                 onClick={() => setActiveTab('devoluciones-externas')}
-                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
+                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 relative ${
                   activeTab === 'devoluciones-externas'
-                    ? 'bg-orange-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <span className="hidden sm:inline">🔄 </span>Devoluciones
-                {(devolucionesExternas || []).length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
-                    {devolucionesExternas.length}
-                  </span>
-                )}
-              </button>
-            )}
-            {user?.role === 'conductor' && (
-              <button
-                onClick={() => setActiveTab('devoluciones-externas')}
-                className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors relative ${
-                  activeTab === 'devoluciones-externas'
-                    ? 'bg-orange-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
+                    ? 'bg-orange-600 text-white shadow-sm shadow-orange-500/25'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
                 <span className="hidden sm:inline">📦 </span>Recogidas
-                {(pickupsPendientes || []).length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
-                    {pickupsPendientes.length}
-                  </span>
-                )}
               </button>
             )}
           </div>
@@ -789,36 +785,38 @@ export function TraspasosPage() {
 
         {/* Tab: Solicitudes Recibidas */}
         {activeTab === 'solicitudes-recibidas' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
               </div>
             ) : (solicitudesRecibidas || []).length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-                <p className="text-lg font-medium text-gray-900">No hay solicitudes recibidas</p>
-                <p className="text-sm text-gray-500 mt-1">Aquí aparecerán las solicitudes de traspaso que te envíen</p>
+              <div className="p-16 text-center">
+                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                </div>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">No hay solicitudes recibidas</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Aquí aparecerán las solicitudes de traspaso que te envíen</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">De</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canastillas</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                      <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">De</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Canastillas</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                      <th className="px-3 sm:px-6 py-3.5 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {(solicitudesRecibidas || []).map((solicitud) => (
-                      <tr key={solicitud.id} className="hover:bg-gray-50">
+                      <tr key={solicitud.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
                             {solicitud.from_user?.first_name} {solicitud.from_user?.last_name}
                           </div>
                           <div className="text-sm text-gray-500">
@@ -846,6 +844,18 @@ export function TraspasosPage() {
                           <div className="text-sm text-gray-900">
                             {formatDateTime(solicitud.requested_at)}
                           </div>
+                          {solicitud.status === 'PENDIENTE' && (() => {
+                            const timeInfo = getTimeRemaining(solicitud.requested_at)
+                            return (
+                              <div className={`text-xs mt-1 font-medium ${
+                                timeInfo.autoAccepted ? 'text-blue-600' : 
+                                timeInfo.minutes <= 30 ? 'text-orange-600' : 
+                                'text-gray-500'
+                              }`}>
+                                {timeInfo.autoAccepted ? '✅ Aceptado automático' : `⏱ ${timeInfo.label}`}
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="px-6 py-4">
                           {getStatusBadge(solicitud.status)}
@@ -895,36 +905,38 @@ export function TraspasosPage() {
 
         {/* Tab: Solicitudes Enviadas */}
         {activeTab === 'solicitudes-enviadas' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
               </div>
             ) : (solicitudesEnviadas || []).length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-                <p className="text-lg font-medium text-gray-900">No has enviado solicitudes</p>
-                <p className="text-sm text-gray-500 mt-1">
+              <div className="p-16 text-center">
+                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                </div>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">No has enviado solicitudes</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Selecciona canastillas y haz clic en "Solicitar Traspaso"
                 </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Para</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canastillas</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Para</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Canastillas</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                      <th className="px-6 py-3.5 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {(solicitudesEnviadas || []).map((solicitud) => (
-                      <tr key={solicitud.id} className="hover:bg-gray-50">
+                      <tr key={solicitud.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {solicitud.to_user?.first_name} {solicitud.to_user?.last_name}
@@ -954,6 +966,18 @@ export function TraspasosPage() {
                           <div className="text-sm text-gray-900">
                             {formatDateTime(solicitud.requested_at)}
                           </div>
+                          {solicitud.status === 'PENDIENTE' && (() => {
+                            const timeInfo = getTimeRemaining(solicitud.requested_at)
+                            return (
+                              <div className={`text-xs mt-1 font-medium ${
+                                timeInfo.autoAccepted ? 'text-blue-600' : 
+                                timeInfo.minutes <= 30 ? 'text-orange-600' : 
+                                'text-gray-500'
+                              }`}>
+                                {timeInfo.autoAccepted ? '✅ Aceptado automático' : `⏱ ${timeInfo.label}`}
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="px-6 py-4">
                           {getStatusBadge(solicitud.status)}
@@ -992,48 +1016,50 @@ export function TraspasosPage() {
 
         {/* Tab: Historial */}
         {activeTab === 'historial' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
               </div>
             ) : (historial || []).length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-lg font-medium text-gray-900">Sin historial</p>
-                <p className="text-sm text-gray-500 mt-1">
+              <div className="p-16 text-center">
+                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">Sin historial</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Aquí aparecerán los traspasos completados o rechazados
                 </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">De → Para</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canastillas</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">De → Para</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Canastillas</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
+                      <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                      <th className="px-6 py-3.5 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {(historial || []).map((item) => (
-                      <tr key={item.id} className="hover:bg-gray-50">
+                      <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="text-sm">
-                            <span className="font-medium text-gray-900">
+                            <span className="font-semibold text-gray-900 dark:text-white">
                               {item.from_user?.first_name} {item.from_user?.last_name}
                             </span>
-                            <span className="text-gray-500 mx-2">→</span>
-                            <span className="font-medium text-gray-900">
+                            <span className="text-gray-400 dark:text-gray-500 mx-2">→</span>
+                            <span className="font-semibold text-gray-900 dark:text-white">
                               {item.to_user?.first_name} {item.to_user?.last_name}
                             </span>
                           </div>
                           {item.remision_number && (
-                            <div className="text-xs text-purple-600 font-medium mt-1">
+                            <div className="text-xs text-purple-600 dark:text-purple-400 font-medium mt-1">
                               {item.remision_number}
                               {item.is_external_transfer && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px]">
@@ -1065,7 +1091,7 @@ export function TraspasosPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex flex-col items-end gap-1">
-                            {item.status === 'ACEPTADO' && item.remision_number && (
+                            {(item.status === 'ACEPTADO' || item.status === 'ACEPTADO_AUTO') && item.remision_number && (
                               <button
                                 onClick={() => handleVerRemision(item)}
                                 className="inline-flex items-center text-purple-600 hover:text-purple-900 font-medium text-sm"
@@ -1101,249 +1127,92 @@ export function TraspasosPage() {
           </div>
         )}
 
-        {/* Tab: Devoluciones Externas Pendientes (super_admin) */}
-        {activeTab === 'devoluciones-externas' && user?.role === 'super_admin' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-              </div>
-            ) : (devolucionesExternas || []).length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        {/* Tab: Devoluciones / Recogidas (super_admin y conductor) */}
+        {activeTab === 'devoluciones-externas' && (user?.role === 'super_admin' || user?.role === 'conductor') && (
+          <div className="space-y-4">
+            {/* Botón Nueva Recogida */}
+            <div className="flex justify-end">
+              <Button onClick={() => setShowRecogidaConductorModal(true)}>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                 </svg>
-                <p className="text-lg font-medium text-gray-900">Sin devoluciones pendientes</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  No hay canastillas entregadas a externos pendientes de recoger
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <div className="p-4 bg-orange-50 border-b border-orange-200">
-                  <p className="text-sm text-orange-800">
-                    <strong>Devoluciones pendientes:</strong> Estas son entregas a clientes externos que aún tienen canastillas por devolver. Solo el super administrador puede asignar la devolución a un conductor.
-                  </p>
-                </div>
-                <table className="w-full min-w-[700px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente Externo</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entregado por</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canastillas</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {(devolucionesExternas || []).map((item) => {
-                      const returned = item.returned_items_count || 0
-                      const total = item.items_count || 0
-                      const pending = item.pending_items_count ?? total
-                      const progress = total > 0 ? Math.round((returned / total) * 100) : 0
+                Nueva Recogida
+              </Button>
+            </div>
 
-                      return (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {(item as any).sale_point?.name || item.external_recipient_name || 'Sin nombre'}
+            {/* Historial de Recogidas */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200/60 dark:border-gray-700/60 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Historial de Recogidas</h3>
+              </div>
+              {loadingRecogidas ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                </div>
+              ) : historialRecogidas.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-14 h-14 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-7 h-7 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No hay recogidas registradas</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[600px]">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700">
+                      <tr>
+                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
+                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Conductor</th>
+                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Cliente</th>
+                        <th className="px-4 py-3.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Cantidad</th>
+                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Remisión</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {historialRecogidas.map((rec) => (
+                        <tr key={rec.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                            {formatDateTime(rec.created_at)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {rec.conductor?.first_name} {rec.conductor?.last_name}
                             </div>
-                            {(item as any).sale_point ? (
-                              <>
-                                <div className="text-xs text-gray-500">
-                                  {(item as any).sale_point.contact_name}
-                                  {(item as any).sale_point.identification && ` · ${(item as any).sale_point.identification}`}
-                                </div>
-                              </>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {rec.sale_point?.name || rec.client_name}
+                            </div>
+                            {rec.client_address && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{rec.client_address}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                              {rec.items_count}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {rec.remision_number ? (
+                              <span className="text-sm font-mono font-medium text-purple-600 dark:text-purple-400">
+                                {rec.remision_number}
+                              </span>
                             ) : (
-                              <>
-                                {item.external_recipient_cedula && (
-                                  <div className="text-xs text-gray-500">
-                                    CC: {item.external_recipient_cedula}
-                                  </div>
-                                )}
-                                {item.external_recipient_empresa && (
-                                  <div className="text-xs text-gray-500">
-                                    {item.external_recipient_empresa}
-                                  </div>
-                                )}
-                              </>
+                              <span className="text-xs text-gray-400">—</span>
                             )}
-                            {item.remision_number && (
-                              <div className="text-xs text-purple-600 font-medium mt-1">
-                                {item.remision_number}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
-                              {item.from_user?.first_name} {item.from_user?.last_name}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {item.from_user?.email}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
-                              {total} total
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
-                                <div
-                                  className="bg-orange-500 h-2 rounded-full transition-all"
-                                  style={{ width: `${progress}%` }}
-                                />
-                              </div>
-                              <span className="text-xs text-gray-600">
-                                {returned}/{total}
-                              </span>
-                            </div>
-                            <div className="text-xs text-orange-600 font-medium mt-0.5">
-                              {pending} por recoger
-                            </div>
-                            {(item as any).en_alquiler_count > 0 && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 mt-1">
-                                {(item as any).en_alquiler_count} en alquiler
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
-                              {formatDateTime(item.responded_at || item.requested_at)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex flex-col items-end gap-1">
-                              {item.remision_number && (
-                                <button
-                                  onClick={() => handleVerRemision(item)}
-                                  className="inline-flex items-center text-purple-600 hover:text-purple-900 font-medium text-sm"
-                                >
-                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  Remisión
-                                </button>
-                              )}
-                              <button
-                                onClick={() => {
-                                  setSelectedTransferForPickup(item as unknown as Transfer)
-                                  setShowAsignarRecogidaModal(true)
-                                }}
-                                className="inline-flex items-center text-orange-600 hover:text-orange-900 font-medium text-sm"
-                              >
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                Asignar Recogida
-                              </button>
-                            </div>
                           </td>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Tab: Recogidas Pendientes (conductor) */}
-        {activeTab === 'devoluciones-externas' && user?.role === 'conductor' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-              </div>
-            ) : (pickupsPendientes || []).length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-lg font-medium text-gray-900">Sin recogidas pendientes</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  No tienes recogidas asignadas en este momento
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="p-4 bg-orange-50 border-b border-orange-200">
-                  <p className="text-sm text-orange-800">
-                    <strong>Recogidas asignadas:</strong> Estas son las recogidas de canastillas que tienes pendientes. Marca como completada cuando hayas recogido las canastillas.
-                  </p>
-                </div>
-                <div className="divide-y divide-gray-200">
-                  {(pickupsPendientes || []).map((pickup: any) => (
-                    <div key={pickup.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-lg">📦</span>
-                            <h4 className="text-base font-semibold text-gray-900 truncate">
-                              {pickup.transfer?.sale_point?.name || pickup.transfer?.external_recipient_name || 'Cliente externo'}
-                            </h4>
-                          </div>
-                          {pickup.transfer?.sale_point?.address && (
-                            <p className="text-sm text-gray-600 mb-1">
-                              📍 {pickup.transfer.sale_point.address}{pickup.transfer.sale_point.city ? `, ${pickup.transfer.sale_point.city}` : ''}
-                            </p>
-                          )}
-                          {pickup.transfer?.sale_point?.contact_phone && (
-                            <p className="text-sm text-gray-600 mb-1">
-                              📞 {pickup.transfer.sale_point.contact_phone}
-                            </p>
-                          )}
-                          {!pickup.transfer?.sale_point && pickup.transfer?.external_recipient_phone && (
-                            <p className="text-sm text-gray-600 mb-1">
-                              📞 {pickup.transfer.external_recipient_phone}
-                            </p>
-                          )}
-                          {pickup.transfer?.external_recipient_empresa && (
-                            <p className="text-sm text-gray-500 mb-1">
-                              🏢 {pickup.transfer.external_recipient_empresa}
-                            </p>
-                          )}
-                          {pickup.transfer?.remision_number && (
-                            <p className="text-xs text-purple-600 font-medium mb-1">
-                              {pickup.transfer.remision_number}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                              {pickup.items_count} canastilla{pickup.items_count !== 1 ? 's' : ''} por recoger
-                            </span>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                              Asignado: {formatDateTime(pickup.created_at)}
-                            </span>
-                            {pickup.assigned_by_user && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                Por: {pickup.assigned_by_user.first_name} {pickup.assigned_by_user.last_name}
-                              </span>
-                            )}
-                          </div>
-                          {pickup.notes && (
-                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                              <p className="text-xs text-yellow-800">📝 {pickup.notes}</p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-shrink-0">
-                          <Button
-                            onClick={() => handleCompletarRecogida(pickup)}
-                            className="w-full sm:w-auto"
-                          >
-                            ✅ Marcar Completada
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Modal Solicitar Traspaso */}
@@ -1400,6 +1269,13 @@ export function TraspasosPage() {
         }}
         onSuccess={() => refreshTraspasos()}
         transfer={selectedTransferForPickup}
+      />
+
+      {/* Modal Recogida Conductor (nuevo sistema) */}
+      <RecogidaConductorModal
+        isOpen={showRecogidaConductorModal}
+        onClose={() => setShowRecogidaConductorModal(false)}
+        onSuccess={() => { refreshTraspasos(); fetchHistorialRecogidas() }}
       />
 
       {/* Modal Motivo de Rechazo/Cancelación */}

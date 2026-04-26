@@ -98,17 +98,30 @@ export function SolicitarTraspasoModal({
       if (!errorTraspasos && traspasosPendientes && traspasosPendientes.length > 0) {
         const transferIds = traspasosPendientes.map(t => t.id)
 
-        // Obtener items retenidos con batching
+        // Obtener items retenidos con batching por transfer_id
         const BATCH_SIZE = 500
         for (let i = 0; i < transferIds.length; i += BATCH_SIZE) {
           const batchIds = transferIds.slice(i, i + BATCH_SIZE)
-          const { data: itemsRetenidos, error: errorItems } = await supabase
-            .from('transfer_items')
-            .select('canastilla_id')
-            .in('transfer_id', batchIds)
 
-          if (!errorItems && itemsRetenidos) {
-            canastillasRetenidasIds = [...canastillasRetenidasIds, ...itemsRetenidos.map(item => item.canastilla_id)]
+          // Paginar resultados de transfer_items (Supabase limita a 1000 por query)
+          let offset = 0
+          let hasMoreItems = true
+          const ITEMS_PAGE = 1000
+
+          while (hasMoreItems) {
+            const { data: itemsRetenidos, error: errorItems } = await supabase
+              .from('transfer_items')
+              .select('canastilla_id')
+              .in('transfer_id', batchIds)
+              .range(offset, offset + ITEMS_PAGE - 1)
+
+            if (!errorItems && itemsRetenidos && itemsRetenidos.length > 0) {
+              canastillasRetenidasIds = [...canastillasRetenidasIds, ...itemsRetenidos.map(item => item.canastilla_id)]
+              offset += ITEMS_PAGE
+              hasMoreItems = itemsRetenidos.length === ITEMS_PAGE
+            } else {
+              hasMoreItems = false
+            }
           }
         }
       }
@@ -126,9 +139,8 @@ export function SolicitarTraspasoModal({
           .eq('current_owner_id', currentUser.id)
           .in('status', ['DISPONIBLE', 'EN_ALQUILER'])
           .order('color', { ascending: true })
+          .order('id', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
-
-        if (errorDisponibles) throw errorDisponibles
 
         if (data && data.length > 0) {
           disponibles = [...disponibles, ...data]
@@ -139,10 +151,36 @@ export function SolicitarTraspasoModal({
         }
       }
 
+      // Deduplicar canastillas (paginación puede generar duplicados)
+      const uniqueMap = new Map(disponibles.map(c => [c.id, c]))
+      disponibles = Array.from(uniqueMap.values())
+
       // 3. Filtrar canastillas retenidas
+      const disponiblesCount = disponibles.filter(c => c.status === 'DISPONIBLE').length
+      const enAlquilerCount = disponibles.filter(c => c.status === 'EN_ALQUILER').length
+
+      console.log('📊 DEBUG TRASPASOS:', {
+        totalCargadas: disponibles.length,
+        soloDisponibles: disponiblesCount,
+        soloEnAlquiler: enAlquilerCount,
+        traspasosPendientesCount: traspasosPendientes?.length || 0,
+        canastillasRetenidasTotal: canastillasRetenidasIds.length,
+        transferIds: traspasosPendientes?.map(t => t.id) || [],
+      })
+
       const canastillasLibres = disponibles.filter(
         c => !canastillasRetenidasIds.includes(c.id)
       )
+
+      const libresDisponibles = canastillasLibres.filter(c => c.status === 'DISPONIBLE').length
+      const libresEnAlquiler = canastillasLibres.filter(c => c.status === 'EN_ALQUILER').length
+
+      console.log('📊 DEBUG RESULTADO:', {
+        canastillasLibresTotal: canastillasLibres.length,
+        libresDisponibles,
+        libresEnAlquiler,
+        retenidasReales: disponibles.length - canastillasLibres.length,
+      })
 
       // Guardar cantidad de retenidas para mostrar mensaje
       const cantidadRetenidas = disponibles.length - canastillasLibres.length

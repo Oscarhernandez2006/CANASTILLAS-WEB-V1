@@ -8,8 +8,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 
+export type DashboardFilter = 'todos' | 'procesos' | 'clientes_externos' | 'puntos_venta' | 'conductores'
+
 export interface LocationData {
+  userId: string
   name: string
+  ubicacion: string
+  area: string
+  role: string
+  filterCategory: DashboardFilter
   total: number
   disponibles: number
   enAlquiler: number
@@ -17,6 +24,10 @@ export interface LocationData {
   enLavado: number
   enReparacion: number
   enRetorno: number
+  entradasHoy: number
+  salidasHoy: number
+  entradasPromedio: number
+  salidasPromedio: number
 }
 
 interface DashboardStats {
@@ -76,6 +87,7 @@ export function useDashboardStats() {
         let query = supabase
           .from('canastillas')
           .select('*', { count: 'exact', head: true })
+          .not('status', 'in', '(DADA_DE_BAJA,EXTRAVIADA,ARCHIVADA)')
 
         // Si NO es super_admin ni consultor_proceso, filtrar solo las canastillas del usuario actual
         if (!canSeeAllCanastillas) {
@@ -125,7 +137,7 @@ export function useDashboardStats() {
       const enRetorno = enRetornoResult.count || 0
       const totalEnAlquiler = enAlquilerResult.count || 0
 
-      // Calcular canastillas retenidas en traspasos pendientes del usuario (igual que en traspasos)
+      // Calcular canastillas retenidas en traspasos pendientes del usuario (solo DISPONIBLE)
       let canastillasRetenidasCount = 0
 
       {
@@ -140,10 +152,12 @@ export function useDashboardStats() {
           const BATCH_SIZE = 500
           for (let i = 0; i < transferIds.length; i += BATCH_SIZE) {
             const batch = transferIds.slice(i, i + BATCH_SIZE)
+            // Solo contar items cuya canastilla sea DISPONIBLE (no EN_ALQUILER u otros)
             const { count } = await supabase
               .from('transfer_items')
-              .select('*', { count: 'exact', head: true })
+              .select('*, canastillas!inner(*)', { count: 'exact', head: true })
               .in('transfer_id', batch)
+              .eq('canastillas.status', 'DISPONIBLE')
             canastillasRetenidasCount += count || 0
           }
         }
@@ -196,8 +210,7 @@ export function useDashboardStats() {
         }
       }
 
-      // Obtener ubicaciones reales de la base de datos
-      // Consultar TODAS las canastillas con paginación (Supabase limita a 1000 por consulta)
+      // Obtener TODAS las canastillas con paginación + owner info
       const PAGE_SIZE = 1000
       let allCanastillasData: { current_location: string | null; current_area: string | null; status: string; current_owner_id: string | null }[] = []
       let hasMore = true
@@ -207,7 +220,7 @@ export function useDashboardStats() {
         let locationQuery = supabase
           .from('canastillas')
           .select('current_location, current_area, status, current_owner_id')
-          .not('status', 'in', '(DADA_DE_BAJA,EXTRAVIADA)')
+          .not('status', 'in', '(DADA_DE_BAJA,EXTRAVIADA,ARCHIVADA)')
 
         if (!canSeeAllCanastillas) {
           locationQuery = locationQuery.eq('current_owner_id', user.id)
@@ -225,43 +238,117 @@ export function useDashboardStats() {
         }
       }
 
-      // Agrupar por ubicación
-      // Si no tiene current_location, intentar usar el nombre del propietario
-      // Obtener mapa de usuarios para resolver nombres
-      const ownerIds = [...new Set(allCanastillasData.filter(c => (!c.current_location || c.current_location.trim() === '') && c.current_owner_id).map(c => c.current_owner_id!))]
-      const ownerMap: Record<string, string> = {}
+      // Obtener TODOS los usuarios para agrupar (incluir conductores para filtro)
+      const { data: allUsers } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, role, department')
 
-      if (ownerIds.length > 0) {
-        const BATCH_USERS = 500
-        for (let i = 0; i < ownerIds.length; i += BATCH_USERS) {
-          const batch = ownerIds.slice(i, i + BATCH_USERS)
-          const { data: usersData } = await supabase
-            .from('users')
-            .select('id, first_name, last_name')
-            .in('id', batch)
-          if (usersData) {
-            for (const u of usersData) {
-              ownerMap[u.id] = `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Sin nombre'
-            }
+      const userMap: Record<string, { name: string; role: string; department: string }> = {}
+      if (allUsers) {
+        for (const u of allUsers) {
+          userMap[u.id] = {
+            name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.id,
+            role: u.role || 'Sin rol',
+            department: (u as any).department || '',
           }
         }
       }
 
-      const locationMap: Record<string, LocationData> = {}
+      // Función para determinar la categoría de filtro
+      const getFilterCategory = (role: string, isClient?: boolean): DashboardFilter => {
+        if (isClient) return 'clientes_externos'
+        if (role === 'conductor') return 'conductores'
+        if (role === 'supervisor') return 'procesos'
+        if (role === 'pdv') return 'puntos_venta'
+        if (role === 'client') return 'clientes_externos'
+        return 'procesos' // operator, washing_staff, logistics, admin, super_admin
+      }
 
-      // Cargar TODAS las ubicaciones registradas en canastilla_attributes para que aparezcan aunque tengan 0 canastillas
-      const { data: allLocations } = await supabase
-        .from('canastilla_attributes')
-        .select('value')
-        .eq('attribute_type', 'UBICACION')
-        .eq('is_active', true)
-        .order('value')
+      // Obtener entradas y salidas de hoy y últimos 7 días para promedios
+      const today = new Date()
+      // Usar fecha LOCAL (no UTC) para comparar "hoy"
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      const sevenDaysAgo = new Date(today)
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString()
 
-      if (allLocations) {
-        for (const loc of allLocations) {
-          if (loc.value && loc.value.trim() !== '') {
-            locationMap[loc.value] = {
-              name: loc.value,
+      // Traspasos aceptados de los últimos 7 días (para entradas y salidas)
+      const { data: recentTransfers } = await supabase
+        .from('transfers')
+        .select('id, from_user_id, to_user_id, responded_at, status')
+        .in('status', ['ACEPTADO', 'ACEPTADO_AUTO'])
+        .gte('responded_at', sevenDaysAgoStr)
+
+      // Contar items por transfer
+      const transferIds = recentTransfers?.map(t => t.id) || []
+      const transferItemCounts: Record<string, number> = {}
+
+      if (transferIds.length > 0) {
+        const BATCH_TI = 500
+        for (let i = 0; i < transferIds.length; i += BATCH_TI) {
+          const batch = transferIds.slice(i, i + BATCH_TI)
+          const { data: items } = await supabase
+            .from('transfer_items')
+            .select('transfer_id')
+            .in('transfer_id', batch)
+            .limit(10000)
+          if (items) {
+            items.forEach(item => {
+              transferItemCounts[item.transfer_id] = (transferItemCounts[item.transfer_id] || 0) + 1
+            })
+          }
+        }
+      }
+
+      // Calcular entradas/salidas por usuario (hoy y últimos 7 días)
+      const userEntradas: Record<string, { hoy: number; semana: number }> = {}
+      const userSalidas: Record<string, { hoy: number; semana: number }> = {}
+
+      recentTransfers?.forEach(t => {
+        const count = transferItemCounts[t.id] || 0
+        // Convertir responded_at a fecha LOCAL para comparar con "hoy"
+        const localRespondedDate = t.responded_at ? new Date(t.responded_at) : null
+        const respondedDay = localRespondedDate ? `${localRespondedDate.getFullYear()}-${String(localRespondedDate.getMonth() + 1).padStart(2, '0')}-${String(localRespondedDate.getDate()).padStart(2, '0')}` : ''
+        const isToday = respondedDay === todayStr
+
+        // Salidas del remitente
+        if (!userSalidas[t.from_user_id]) userSalidas[t.from_user_id] = { hoy: 0, semana: 0 }
+        userSalidas[t.from_user_id].semana += count
+        if (isToday) userSalidas[t.from_user_id].hoy += count
+
+        // Entradas del destinatario
+        if (!userEntradas[t.to_user_id]) userEntradas[t.to_user_id] = { hoy: 0, semana: 0 }
+        userEntradas[t.to_user_id].semana += count
+        if (isToday) userEntradas[t.to_user_id].hoy += count
+      })
+
+      // Agrupar canastillas por usuario
+      // Las canastillas EN_ALQUILER se agrupan aparte por cliente (current_location)
+      const userStatsMap: Record<string, LocationData> = {}
+
+      allCanastillasData.forEach((c) => {
+        const ownerId = c.current_owner_id
+        if (!ownerId) return
+
+        // Verificar que el usuario existe
+        if (!userMap[ownerId]) return
+
+        const userName = userMap[ownerId].name
+        const userRole = userMap[ownerId].role
+        const ubicacion = c.current_location && c.current_location.trim() !== '' ? c.current_location : 'Sin ubicación'
+        const area = c.current_area && c.current_area.trim() !== '' ? c.current_area : 'Sin área'
+
+        // Si la canastilla está EN_ALQUILER, agrupar por cliente (current_location)
+        if (c.status === 'EN_ALQUILER' && ubicacion !== 'Sin ubicación') {
+          const clientKey = `client_${ubicacion}`
+          if (!userStatsMap[clientKey]) {
+            userStatsMap[clientKey] = {
+              userId: clientKey,
+              name: `🏢 ${ubicacion}`,
+              ubicacion: ubicacion,
+              area: 'Cliente externo',
+              role: 'client',
+              filterCategory: 'clientes_externos',
               total: 0,
               disponibles: 0,
               enAlquiler: 0,
@@ -269,21 +356,29 @@ export function useDashboardStats() {
               enLavado: 0,
               enReparacion: 0,
               enRetorno: 0,
+              entradasHoy: 0,
+              salidasHoy: 0,
+              entradasPromedio: 0,
+              salidasPromedio: 0,
             }
           }
+          userStatsMap[clientKey].total++
+          userStatsMap[clientKey].enAlquiler++
+          return
         }
-      }
 
-      allCanastillasData.forEach((c) => {
-        let locationName = c.current_location && c.current_location.trim() !== '' 
-          ? c.current_location 
-          : (c.current_owner_id && ownerMap[c.current_owner_id] 
-              ? `👤 ${ownerMap[c.current_owner_id]}` 
-              : 'Sin ubicación')
+        if (!userStatsMap[ownerId]) {
+          const entradas = userEntradas[ownerId] || { hoy: 0, semana: 0 }
+          const salidas = userSalidas[ownerId] || { hoy: 0, semana: 0 }
+          const userDept = userMap[ownerId].department || ''
 
-        if (!locationMap[locationName]) {
-          locationMap[locationName] = {
-            name: locationName,
+          userStatsMap[ownerId] = {
+            userId: ownerId,
+            name: userName,
+            ubicacion: userDept || ubicacion,
+            area: userDept || area,
+            role: userRole,
+            filterCategory: getFilterCategory(userRole),
             total: 0,
             disponibles: 0,
             enAlquiler: 0,
@@ -291,47 +386,64 @@ export function useDashboardStats() {
             enLavado: 0,
             enReparacion: 0,
             enRetorno: 0,
+            entradasHoy: entradas.hoy,
+            salidasHoy: salidas.hoy,
+            entradasPromedio: Math.round(entradas.semana / 7),
+            salidasPromedio: Math.round(salidas.semana / 7),
           }
         }
 
-        locationMap[locationName].total++
+        // Solo actualizar ubicación si el usuario no tiene department asignado
+        const userDeptCheck = userMap[ownerId].department
+        if (!userDeptCheck) {
+          if (ubicacion !== 'Sin ubicación') {
+            userStatsMap[ownerId].ubicacion = ubicacion
+          }
+          if (area !== 'Sin área') {
+            userStatsMap[ownerId].area = area
+          }
+        }
+
+        userStatsMap[ownerId].total++
 
         switch (c.status) {
           case 'DISPONIBLE':
-            locationMap[locationName].disponibles++
+            userStatsMap[ownerId].disponibles++
             break
           case 'EN_ALQUILER':
-            locationMap[locationName].enAlquiler++
+            userStatsMap[ownerId].enAlquiler++
             break
           case 'EN_USO_INTERNO':
-            locationMap[locationName].enUsoInterno++
+            userStatsMap[ownerId].enUsoInterno++
             break
           case 'EN_LAVADO':
-            locationMap[locationName].enLavado++
+            userStatsMap[ownerId].enLavado++
             break
           case 'EN_REPARACION':
-            locationMap[locationName].enReparacion++
+            userStatsMap[ownerId].enReparacion++
             break
           case 'EN_RETORNO':
-            locationMap[locationName].enRetorno++
+            userStatsMap[ownerId].enRetorno++
             break
         }
       })
 
       // Convertir a array y ordenar por total (mayor a menor)
-      let locations = Object.values(locationMap)
+      let locations = Object.values(userStatsMap)
         .sort((a, b) => b.total - a.total)
 
-      // Filtrar ubicaciones para consultor_proceso
+      // Filtrar ubicaciones para consultor_proceso: mostrar todo excepto puntos de venta y otras ubicaciones excluidas
+      const EXCLUIR_EXACTOS = ['CANASTILLERO', 'EN TRANSITO', 'INVERSIONES SERRANO', 'LA PARISIENNE', 'OFICINA DE SISTEMAS']
       if (isConsultorProceso) {
-        const UBICACIONES_PROCESO = [
-          'DESPACHO BOVINO', 'DESPACHO PORCINO', 'TAT CONTAINER',
-          'DESPOSTE PORCINO', 'SACRIFICIO PORCINO', 'SACRIFICIO BOVINO',
-          'DESPOSTE BOVINO', 'SUBPRODUCTO BOVINO', 'SUBPRODUCTO PORCINO',
-        ]
-        locations = locations.filter(l =>
-          UBICACIONES_PROCESO.some(u => l.name.toUpperCase().includes(u))
-        )
+        locations = locations.filter(l => {
+          const dept = (userMap[l.userId]?.department || '').toUpperCase()
+          const ubic = l.ubicacion.toUpperCase()
+          // Excluir puntos de venta (PDV), clientes externos y ubicaciones específicas
+          const isPDV = ubic.startsWith('PDV') || dept.startsWith('PDV')
+          const isClienteExterno = l.filterCategory === 'clientes_externos'
+          const isExcluido = EXCLUIR_EXACTOS.includes(dept) || EXCLUIR_EXACTOS.includes(ubic)
+          return !isPDV && !isClienteExterno && !isExcluido
+        })
       }
 
       // Calcular ingresos (simulado por ahora - $5,000 por canastilla/día)

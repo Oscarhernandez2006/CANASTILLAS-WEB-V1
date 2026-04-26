@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Button } from './Button'
 import { DynamicSelect } from './DynamicSelect'
+import { AuthCodeGate } from './AuthCodeGate'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCanastillaAttributes } from '@/hooks/useCanastillaAttributes'
@@ -19,6 +20,7 @@ export function CrearLoteCanastillasModal({ isOpen, onClose, onSuccess }: CrearL
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState(0)
+  const [showAuthGate, setShowAuthGate] = useState(false)
 
   // Cargar atributos dinámicos
   const colores = useCanastillaAttributes('COLOR')
@@ -47,8 +49,13 @@ export function CrearLoteCanastillasModal({ isOpen, onClose, onSuccess }: CrearL
     return `C${timestamp}${indexStr}${random}`.toUpperCase()
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setShowAuthGate(true)
+  }
+
+  const handleAuthorizedSubmit = async () => {
+    setShowAuthGate(false)
     setError('')
     setLoading(true)
     setProgress(0)
@@ -361,6 +368,14 @@ export function CrearLoteCanastillasModal({ isOpen, onClose, onSuccess }: CrearL
           </form>
         </div>
       </div>
+
+      <AuthCodeGate
+        isOpen={showAuthGate}
+        onAuthorized={handleAuthorizedSubmit}
+        onCancel={() => setShowAuthGate(false)}
+        actionDescription={`Crear lote de ${Math.max(1, parseInt(formData.cantidad) || 1)} canastilla(s)`}
+        loading={loading}
+      />
     </div>
   )
 }

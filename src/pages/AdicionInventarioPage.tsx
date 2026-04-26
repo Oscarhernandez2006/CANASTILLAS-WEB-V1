@@ -106,6 +106,7 @@ export function AdicionInventarioPage() {
           .eq('status', 'DISPONIBLE')
           .eq('current_owner_id', currentUser.id)
           .order('color', { ascending: true })
+          .order('id', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
         if (errorDisponibles) throw errorDisponibles

@@ -141,6 +141,30 @@ export function usePermissions() {
     return hasPermission('rutas.ver')
   }, [hasPermission])
 
+  const canAccessTrazabilidad = useCallback((): boolean => {
+    return hasPermission('trazabilidad.ver')
+  }, [hasPermission])
+
+  const canAccessPermisos = useCallback((): boolean => {
+    return hasPermission('permisos.ver')
+  }, [hasPermission])
+
+  const canAccessAdicionInventario = useCallback((): boolean => {
+    return hasPermission('adicion_inventario.ver')
+  }, [hasPermission])
+
+  const canAccessConsultarInventarioUsuario = useCallback((): boolean => {
+    return hasPermission('consultar_inventario_usuario.ver')
+  }, [hasPermission])
+
+  const canAccessHistorialTraspasos = useCallback((): boolean => {
+    return hasPermission('historial_traspasos.ver')
+  }, [hasPermission])
+
+  const canAccessFacturasPerdida = useCallback((): boolean => {
+    return hasPermission('facturas_perdida.ver')
+  }, [hasPermission])
+
   // ========== COMPATIBILIDAD CON CÓDIGO EXISTENTE ==========
 
   // Para el Sidebar - acceso a canastillas o inventario
@@ -190,6 +214,12 @@ export function usePermissions() {
     canAccessControlPdv,
     canAccessAuditoria,
     canAccessRutas,
+    canAccessTrazabilidad,
+    canAccessPermisos,
+    canAccessAdicionInventario,
+    canAccessConsultarInventarioUsuario,
+    canAccessHistorialTraspasos,
+    canAccessFacturasPerdida,
 
     // Compatibilidad
     canAccessCanastillasMenu,

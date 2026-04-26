@@ -98,6 +98,7 @@ export function AgregarCanastillasAlquilerModal({ isOpen, onClose, onSuccess, re
           .eq('current_owner_id', selectedUserId)
           .eq('status', 'DISPONIBLE')
           .order('color', { ascending: true })
+          .order('id', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
 
         if (fetchErr) throw fetchErr
