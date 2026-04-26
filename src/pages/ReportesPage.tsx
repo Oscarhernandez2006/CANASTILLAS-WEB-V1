@@ -16,6 +16,7 @@ type ReportType =
   | 'traspasos'
   | 'ingresos'
   | 'trazabilidad'
+  | 'demanda_proceso'
 
 interface ReportOption {
   id: ReportType
@@ -251,6 +252,31 @@ export function ReportesPage() {
         },
       ],
     },
+    {
+      id: 'analisis',
+      name: 'Análisis & Planificación',
+      description: 'Análisis de demanda, capacidad y planificación de inventario por proceso',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      ),
+      color: 'amber',
+      reports: [
+        {
+          id: 'demanda_proceso',
+          name: 'Demanda por Proceso',
+          description: 'Análisis de demanda vs inventario actual por proceso: promedio diario, pico máximo, inventario recomendado y respaldo de emergencia (3 hojas)',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          ),
+          requiresDateRange: true,
+          permissionKey: 'reportes.inventario',
+        },
+      ],
+    },
   ]
 
   // Filtrar categorías y reportes según permisos
@@ -422,6 +448,7 @@ export function ReportesPage() {
         case 'traspasos': await generateTraspasosReport(); break
         case 'ingresos': await generateIngresosReport(); break
         case 'trazabilidad': await generateTrazabilidadReport(); break
+        case 'demanda_proceso': await generateDemandaProcesoReport(); break
       }
       setSuccess('Reporte generado y descargado exitosamente')
     } catch (err) {
@@ -1154,6 +1181,299 @@ export function ReportesPage() {
     exportExcel(wb, 'Trazabilidad_Completa')
   }
 
+  // ========== REPORTE DEMANDA POR PROCESO ==========
+  const generateDemandaProcesoReport = async () => {
+    const BUFFER_EMERGENCIA = 0.20 // 20% extra para emergencias
+
+    // 1. Obtener todos los usuarios activos con department
+    const { data: usersData, error: usersErr } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, department, role')
+      .eq('is_active', true)
+      .not('department', 'is', null)
+    if (usersErr) throw usersErr
+    const users = usersData || []
+
+    // Agrupar por departamento
+    const deptUsers: Record<string, typeof users> = {}
+    users.forEach(u => {
+      const dept = u.department?.trim() || 'SIN ASIGNAR'
+      if (!deptUsers[dept]) deptUsers[dept] = []
+      deptUsers[dept].push(u)
+    })
+    const departamentos = Object.keys(deptUsers).sort()
+
+    // 2. Obtener inventario actual por propietario
+    let allCanastillas: any[] = []
+    let page = 0
+    const pageSize = 1000
+    while (true) {
+      const { data, error } = await supabase
+        .from('canastillas')
+        .select('id, status, current_owner_id')
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      allCanastillas = [...allCanastillas, ...data]
+      if (data.length < pageSize) break
+      page++
+    }
+
+    // Mapa userId -> departamento
+    const userDeptMap: Record<string, string> = {}
+    users.forEach(u => { userDeptMap[u.id] = u.department?.trim() || 'SIN ASIGNAR' })
+
+    // Inventario actual por departamento
+    const invActualPorDept: Record<string, { total: number; disponibles: number }> = {}
+    allCanastillas.forEach(c => {
+      const dept = userDeptMap[c.current_owner_id] || 'SIN ASIGNAR'
+      if (!invActualPorDept[dept]) invActualPorDept[dept] = { total: 0, disponibles: 0 }
+      invActualPorDept[dept].total++
+      if (c.status === 'DISPONIBLE') invActualPorDept[dept].disponibles++
+    })
+
+    // 3. Obtener traspasos del rango de fechas seleccionado
+    const startDate = `${fechaInicio}T00:00:00`
+    const endDate = `${fechaFin}T23:59:59`
+
+    let allTransfers: any[] = []
+    let tPage = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('transfers')
+        .select('id, from_user_id, to_user_id, status, requested_at, responded_at, remision_number')
+        .or(`status.eq.ACEPTADO,status.eq.ACEPTADO_AUTO`)
+        .gte('requested_at', startDate)
+        .lte('requested_at', endDate)
+        .not('remision_number', 'is', null)
+        .range(tPage * pageSize, (tPage + 1) * pageSize - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      allTransfers = [...allTransfers, ...data]
+      if (data.length < pageSize) break
+      tPage++
+    }
+
+    // Contar items por transfer
+    const transferItemCounts: Record<string, number> = {}
+    await Promise.all(
+      allTransfers.map(async (t) => {
+        const { count } = await supabase
+          .from('transfer_items')
+          .select('*', { count: 'exact', head: true })
+          .eq('transfer_id', t.id)
+        transferItemCounts[t.id] = count || 0
+      })
+    )
+
+    // 4. Calcular entradas/salidas diarias por departamento
+    const diasRango = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000))
+
+    // Estructura: dept -> { dia -> { entradas, salidas } }
+    const flujoDiario: Record<string, Record<string, { entradas: number; salidas: number }>> = {}
+
+    for (const t of allTransfers) {
+      const count = transferItemCounts[t.id] || 0
+      if (count === 0) continue
+
+      const fromDept = userDeptMap[t.from_user_id] || 'EXTERNO'
+      const toDept = userDeptMap[t.to_user_id] || 'EXTERNO'
+      const dia = new Date(t.requested_at).toISOString().split('T')[0]
+
+      // Salida del proceso origen
+      if (fromDept !== 'EXTERNO') {
+        if (!flujoDiario[fromDept]) flujoDiario[fromDept] = {}
+        if (!flujoDiario[fromDept][dia]) flujoDiario[fromDept][dia] = { entradas: 0, salidas: 0 }
+        flujoDiario[fromDept][dia].salidas += count
+      }
+
+      // Entrada al proceso destino
+      if (toDept !== 'EXTERNO') {
+        if (!flujoDiario[toDept]) flujoDiario[toDept] = {}
+        if (!flujoDiario[toDept][dia]) flujoDiario[toDept][dia] = { entradas: 0, salidas: 0 }
+        flujoDiario[toDept][dia].entradas += count
+      }
+    }
+
+    // 5. Calcular estadísticas por departamento
+    interface DeptStats {
+      departamento: string
+      usuarios: number
+      inventarioActual: number
+      disponiblesActual: number
+      promedioEntradasDia: number
+      promedioSalidasDia: number
+      picoMaxEntradas: number
+      picoMaxSalidas: number
+      demandaPromedio: number
+      inventarioRecomendado: number
+      respaldoEmergencia: number
+      inventarioIdeal: number
+      deficit: number
+      estado: string
+    }
+
+    const stats: DeptStats[] = departamentos.map(dept => {
+      const flujo = flujoDiario[dept] || {}
+      const dias = Object.values(flujo)
+      const inv = invActualPorDept[dept] || { total: 0, disponibles: 0 }
+      const numUsuarios = deptUsers[dept]?.length || 0
+
+      const totalEntradas = dias.reduce((s, d) => s + d.entradas, 0)
+      const totalSalidas = dias.reduce((s, d) => s + d.salidas, 0)
+      const picoMaxEntradas = dias.length > 0 ? Math.max(...dias.map(d => d.entradas)) : 0
+      const picoMaxSalidas = dias.length > 0 ? Math.max(...dias.map(d => d.salidas)) : 0
+
+      const promedioEntradasDia = Math.round(totalEntradas / diasRango)
+      const promedioSalidasDia = Math.round(totalSalidas / diasRango)
+
+      // La demanda promedio es lo que el proceso necesita para operar (el mayor entre lo que entra y sale)
+      const demandaPromedio = Math.max(promedioEntradasDia, promedioSalidasDia)
+      // Inventario recomendado: cubrir al menos el pico máximo diario
+      const inventarioRecomendado = Math.max(picoMaxSalidas, picoMaxEntradas, demandaPromedio)
+      // Respaldo de emergencia: 20% adicional sobre el recomendado
+      const respaldoEmergencia = Math.ceil(inventarioRecomendado * BUFFER_EMERGENCIA)
+      // Inventario ideal = recomendado + respaldo
+      const inventarioIdeal = inventarioRecomendado + respaldoEmergencia
+      // Déficit o superávit
+      const deficit = inv.total - inventarioIdeal
+
+      let estado = ''
+      if (inv.total === 0 && inventarioIdeal === 0) estado = '⚪ Sin actividad'
+      else if (deficit >= respaldoEmergencia) estado = '🟢 Óptimo (con respaldo)'
+      else if (deficit >= 0) estado = '🟡 Justo (sin margen)'
+      else if (deficit > -respaldoEmergencia) estado = '🟠 Déficit leve'
+      else estado = '🔴 Déficit crítico'
+
+      return {
+        departamento: dept,
+        usuarios: numUsuarios,
+        inventarioActual: inv.total,
+        disponiblesActual: inv.disponibles,
+        promedioEntradasDia,
+        promedioSalidasDia,
+        picoMaxEntradas,
+        picoMaxSalidas,
+        demandaPromedio,
+        inventarioRecomendado,
+        respaldoEmergencia,
+        inventarioIdeal,
+        deficit,
+        estado,
+      }
+    })
+
+    // Filtrar solo los que tienen actividad o inventario
+    const statsConActividad = stats.filter(s => s.inventarioActual > 0 || s.demandaPromedio > 0)
+
+    // ========== CREAR EXCEL ==========
+    const wb = XLSX.utils.book_new()
+    const dateRange = `${formatDateDisplay(fechaInicio)} - ${formatDateDisplay(fechaFin)} (${diasRango} días)`
+
+    // === HOJA 1: RESUMEN POR PROCESO ===
+    const h1 = ['#', 'Proceso/Departamento', 'Usuarios', 'Inventario Actual', 'Disponibles', 'Prom. Entradas/Día', 'Prom. Salidas/Día', 'Pico Máx. Salidas', 'Demanda Promedio', 'Inv. Recomendado', 'Respaldo Emergencia (+20%)', 'Inventario Ideal', 'Diferencia', 'Estado']
+    const d1 = statsConActividad.map((s, i) => [
+      i + 1, s.departamento, s.usuarios, s.inventarioActual, s.disponiblesActual,
+      s.promedioEntradasDia, s.promedioSalidasDia, s.picoMaxSalidas,
+      s.demandaPromedio, s.inventarioRecomendado, s.respaldoEmergencia,
+      s.inventarioIdeal, s.deficit, s.estado,
+    ])
+
+    const totalActual = statsConActividad.reduce((s, d) => s + d.inventarioActual, 0)
+    const totalIdeal = statsConActividad.reduce((s, d) => s + d.inventarioIdeal, 0)
+    const totalDeficit = totalActual - totalIdeal
+    const enDeficit = statsConActividad.filter(s => s.deficit < 0)
+    const enOptimo = statsConActividad.filter(s => s.deficit >= s.respaldoEmergencia)
+
+    const ws1Data = buildSheetData('Análisis de Demanda por Proceso', h1, d1, [
+      { label: 'Período analizado', value: dateRange },
+      { label: 'Procesos analizados', value: statsConActividad.length },
+      { label: 'Total inventario actual', value: totalActual },
+      { label: 'Total inventario ideal', value: totalIdeal },
+      { label: 'Diferencia global', value: totalDeficit },
+      { label: 'Procesos en déficit', value: enDeficit.length },
+      { label: 'Procesos en estado óptimo', value: enOptimo.length },
+    ])
+    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data)
+    ws1['!cols'] = [5, 25, 10, 14, 12, 16, 16, 16, 14, 16, 22, 14, 12, 22].map(w => ({ wch: w }))
+    applyMerges(ws1, h1.length, d1.length)
+    XLSX.utils.book_append_sheet(wb, ws1, 'Demanda por Proceso')
+
+    // === HOJA 2: DIAGNÓSTICO DETALLADO ===
+    const h2 = ['Proceso', 'Situación Actual', 'Tiene', 'Necesita', 'Faltan / Sobran', 'Recomendación']
+    const d2 = statsConActividad
+      .filter(s => s.inventarioActual > 0 || s.inventarioIdeal > 0)
+      .sort((a, b) => a.deficit - b.deficit) // Los más críticos primero
+      .map(s => {
+        let situacion = ''
+        let recomendacion = ''
+
+        if (s.deficit < -s.respaldoEmergencia) {
+          situacion = 'DÉFICIT CRÍTICO - El flujo se puede detener'
+          recomendacion = `Asignar URGENTE al menos ${Math.abs(s.deficit)} canastillas adicionales. El proceso no tiene respaldo ante picos de demanda (pico: ${s.picoMaxSalidas}/día vs actual: ${s.inventarioActual}).`
+        } else if (s.deficit < 0) {
+          situacion = 'DÉFICIT LEVE - Opera justo sin margen'
+          recomendacion = `Agregar ${Math.abs(s.deficit)} canastillas para tener respaldo. Actualmente opera al límite: cualquier pico o novedad detendrá el flujo.`
+        } else if (s.deficit < s.respaldoEmergencia) {
+          situacion = 'JUSTO - Cubre demanda pero sin emergencias'
+          recomendacion = `El proceso cubre la demanda diaria promedio (${s.demandaPromedio}/día) pero no tiene margen suficiente para picos de ${s.picoMaxSalidas}/día. Considerar ${s.respaldoEmergencia - s.deficit} unidades extra.`
+        } else {
+          situacion = 'ÓPTIMO - Con respaldo de emergencia'
+          recomendacion = `El proceso tiene inventario suficiente (${s.inventarioActual}) para cubrir demanda (${s.demandaPromedio}/día) y picos (${s.picoMaxSalidas}/día) con ${s.deficit} unidades de respaldo.`
+        }
+
+        return [
+          s.departamento,
+          situacion,
+          s.inventarioActual,
+          s.inventarioIdeal,
+          s.deficit,
+          recomendacion,
+        ]
+      })
+
+    const ws2Data = buildSheetData('Diagnóstico y Recomendaciones', h2, d2)
+    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data)
+    ws2['!cols'] = [25, 35, 10, 10, 14, 60].map(w => ({ wch: w }))
+    applyMerges(ws2, h2.length, d2.length)
+    XLSX.utils.book_append_sheet(wb, ws2, 'Diagnóstico')
+
+    // === HOJA 3: FLUJO DIARIO DETALLADO ===
+    const h3 = ['Fecha', 'Proceso', 'Entradas', 'Salidas', 'Flujo Neto', 'Observación']
+    const d3: any[][] = []
+    const diasSet = new Set<string>()
+    Object.values(flujoDiario).forEach(dias => Object.keys(dias).forEach(d => diasSet.add(d)))
+    const diasOrdenados = Array.from(diasSet).sort()
+
+    for (const dia of diasOrdenados) {
+      for (const dept of departamentos) {
+        const flujo = flujoDiario[dept]?.[dia]
+        if (!flujo) continue
+        const neto = flujo.entradas - flujo.salidas
+        let obs = ''
+        const stat = statsConActividad.find(s => s.departamento === dept)
+        if (stat && flujo.salidas > stat.inventarioRecomendado) {
+          obs = '⚠️ Salidas superaron el inventario recomendado'
+        } else if (flujo.salidas > flujo.entradas * 1.5) {
+          obs = '⚠️ Salidas muy por encima de entradas'
+        }
+        d3.push([formatDateDisplay(dia), dept, flujo.entradas, flujo.salidas, neto, obs])
+      }
+    }
+
+    const ws3Data = buildSheetData('Flujo Diario por Proceso', h3, d3, [
+      { label: 'Período', value: dateRange },
+      { label: 'Días con movimientos', value: diasOrdenados.length },
+      { label: 'Total movimientos registrados', value: d3.length },
+    ])
+    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data)
+    ws3['!cols'] = [14, 25, 12, 12, 12, 40].map(w => ({ wch: w }))
+    applyMerges(ws3, h3.length, d3.length)
+    XLSX.utils.book_append_sheet(wb, ws3, 'Flujo Diario')
+
+    exportExcel(wb, 'Demanda_Por_Proceso')
+  }
+
   // Helper para aplicar merges estándar del encabezado corporativo
   function applyMerges(ws: XLSX.WorkSheet, colCount: number, dataLength: number) {
     ws['!rows'] = [{ hpt: 35 }, { hpt: 20 }, { hpt: 10 }, { hpt: 28 }, { hpt: 18 }, { hpt: 10 }, { hpt: 28 }]
@@ -1268,12 +1588,16 @@ export function ReportesPage() {
               <div className={`px-5 py-4 border-b border-gray-200 dark:border-gray-700 ${
                 category.color === 'emerald'
                   ? 'bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20'
+                  : category.color === 'amber'
+                  ? 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20'
                   : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20'
               }`}>
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${
                     category.color === 'emerald'
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-800 dark:text-emerald-300'
+                      : category.color === 'amber'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-800 dark:text-amber-300'
                       : 'bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-300'
                   }`}>
                     {category.icon}
@@ -1301,13 +1625,15 @@ export function ReportesPage() {
                         isSelected
                           ? category.color === 'emerald'
                             ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 shadow-md ring-1 ring-emerald-200'
+                            : category.color === 'amber'
+                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-md ring-1 ring-amber-200'
                             : 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md ring-1 ring-blue-200'
                           : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300 hover:shadow-sm'
                       }`}
                     >
                       {isSelected && (
                         <div className={`absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center ${
-                          category.color === 'emerald' ? 'bg-emerald-500' : 'bg-blue-500'
+                          category.color === 'emerald' ? 'bg-emerald-500' : category.color === 'amber' ? 'bg-amber-500' : 'bg-blue-500'
                         }`}>
                           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -1316,7 +1642,7 @@ export function ReportesPage() {
                       )}
                       <div className={`mb-2 ${
                         isSelected
-                          ? category.color === 'emerald' ? 'text-emerald-600' : 'text-blue-600'
+                          ? category.color === 'emerald' ? 'text-emerald-600' : category.color === 'amber' ? 'text-amber-600' : 'text-blue-600'
                           : 'text-gray-400 group-hover:text-gray-600 dark:text-gray-500'
                       }`}>
                         {report.icon}
