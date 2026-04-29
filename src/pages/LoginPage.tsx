@@ -109,8 +109,9 @@ export function LoginPage() {
 
           {/* Desarrollador */}
           <div className="mt-12 pt-6 border-t border-gray-200 text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-widest">Desarrollado por</p>
-            <p className="text-sm font-semibold text-gray-600 mt-1">Departamento de Tecnología</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest">Creado por</p>
+            <p className="text-sm font-semibold text-gray-600 mt-1">Oscar David Hernández Guzmán</p>
+            <p className="text-xs text-gray-400 mt-0.5">Departamento de Tecnología</p>
           </div>
         </div>
       </div>

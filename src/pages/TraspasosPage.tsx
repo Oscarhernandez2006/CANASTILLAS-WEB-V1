@@ -669,6 +669,7 @@ export function TraspasosPage() {
     if ((status === 'ACEPTADO' || status === 'ACEPTADO_AUTO') && transfer?.is_external_transfer) {
       const returned = transfer.returned_items_count || 0
       const pending = transfer.pending_items_count ?? (transfer.items_count || 0)
+      const isSuperAdmin = user?.role === 'super_admin'
 
       if (pending <= 0 && returned > 0) {
         return (
@@ -677,16 +678,24 @@ export function TraspasosPage() {
           </span>
         )
       }
-      if (returned > 0 && pending > 0) {
+      if (isSuperAdmin) {
+        if (returned > 0 && pending > 0) {
+          return (
+            <span className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+              Devuelto Parcial ({returned}/{returned + pending})
+            </span>
+          )
+        }
         return (
           <span className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
-            Devuelto Parcial ({returned}/{returned + pending})
+            Externo - Pendiente
           </span>
         )
       }
+      // Para usuarios no superadmin, mostrar como Entregado
       return (
-        <span className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
-          Externo - Pendiente
+        <span className="px-3 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+          Entregado
         </span>
       )
     }
@@ -1102,7 +1111,7 @@ export function TraspasosPage() {
                                 Ver Remisión
                               </button>
                             )}
-                            {item.status === 'ACEPTADO' && item.is_external_transfer && (item.pending_items_count ?? (item.items_count || 0)) > 0 && (
+                            {user?.role === 'super_admin' && item.status === 'ACEPTADO' && item.is_external_transfer && (item.pending_items_count ?? (item.items_count || 0)) > 0 && (
                               <button
                                 onClick={() => {
                                   setSelectedTransferForReturn(item as unknown as Transfer)
